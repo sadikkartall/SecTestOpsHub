@@ -1,0 +1,115 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: sectestops_postgres
+    environment:
+      POSTGRES_USER: sectestops
+      POSTGRES_PASSWORD: securepassword123
+      POSTGRES_DB: sectestops_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - sectestops_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sectestops -d sectestops_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis (Message Broker for Celery)
+  redis:
+    image: redis:7-alpine
+    container_name: sectestops_redis
+    ports:
+      - "6379:6379"
+    networks:
+      - sectestops_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # FastAPI Backend
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: sectestops_api
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://sectestops:securepassword123@postgres:5432/sectestops_db
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: your-secret-key-change-in-production
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    volumes:
+      - ./api:/app
+      - ./artifacts:/app/artifacts
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - sectestops_network
+    restart: on-failure
+    command: sh -c "sleep 5 && uvicorn main:app --host 0.0.0.0 --port 8000 --reload"
+
+  # Celery Worker
+  worker:
+    build:
+      context: ./worker
+      dockerfile: Dockerfile
+    container_name: sectestops_worker
+    environment:
+      DATABASE_URL: postgresql://sectestops:securepassword123@postgres:5432/sectestops_db
+      REDIS_URL: redis://redis:6379/0
+      DOCKER_HOST: unix:///var/run/docker.sock
+    volumes:
+      - ./worker:/app
+      - ./artifacts:/app/artifacts
+      - /var/run/docker.sock:/var/run/docker.sock  # Docker-in-Docker için
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - sectestops_network
+    restart: on-failure
+    command: sh -c "sleep 10 && celery -A tasks worker --loglevel=info"
+
+  # Frontend (React)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: sectestops_frontend
+    ports:
+      - "3000:3000"
+    environment:
+      REACT_APP_API_URL: http://localhost:8000
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - api
+    networks:
+      - sectestops_network
+    stdin_open: true
+    tty: true
+
+volumes:
+  postgres_data:
+  artifacts:
+
+networks:
+  sectestops_network:
+    driver: bridge
+

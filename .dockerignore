@@ -1,0 +1,55 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+*.egg-info/
+
+# Node
+node_modules/
+npm-debug.log*
+.npm
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Documentation (keep only main ones)
+DOCKER_KURULUM.md
+START_HERE.md
+PROJECT_SUMMARY.md
+test_docker.ps1
+
+# Tests
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Artifacts
+artifacts/
+*.xml
+*.json
+*.html
+*.pdf
+
+# Environment
+.env
+.env.local
+
+# Logs
+*.log
+
