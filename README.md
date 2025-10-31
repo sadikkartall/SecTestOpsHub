@@ -35,9 +35,11 @@ SecTestOps Hub, farklı güvenlik test araçlarını tek bir web platformunda to
 │   Worker    │     │   Queue     │
 └──────┬──────┘     └─────────────┘
        │
-       ├─────▶ Nmap (Network Scan)
-       ├─────▶ OWASP ZAP (Web App Scan)
-       └─────▶ Trivy (SCA / Container Scan)
+      ├───▶ Nmap (Network Scan)
+      ├───▶ OWASP ZAP (Web App Scan)
+      ├───▶ Trivy (SCA / Container Scan)
+      ├───▶ Nikto, Amass, ffuf
+      └───▶ WhatWeb, testssl.sh
 ```
 
 ## 🚀 Hızlı Başlangıç
@@ -69,7 +71,7 @@ http://localhost:3000
 
 > 💡 **İpucu:** İlk çalıştırma 5-10 dakika sürebilir (Docker image'ları indiriliyor)
 
-Detaylı kurulum için → [SETUP_GUIDE.md](SETUP_GUIDE.md)
+Detaylı komutlar ve sorun giderme için → [RUN_COMMANDS.md](RUN_COMMANDS.md)
 
 ## 🛠️ Kullanılan Teknolojiler
 
