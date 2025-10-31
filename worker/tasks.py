@@ -12,7 +12,8 @@ from models import Scan, Finding, ScanStatus, Severity
 from parsers.nmap_parser import NmapParser
 from parsers.zap_parser import ZapParser
 from parsers.trivy_parser import TrivyParser
-from ai_analyzer import AIAnalyzer
+from parsers import parse_nikto, parse_amass, parse_ffuf, parse_whatweb, parse_testssl
+from ai_service import AIService
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -33,6 +34,7 @@ celery_app.conf.update(
 # Configuration
 ARTIFACTS_PATH = Path(os.getenv("ARTIFACTS_PATH", "/app/artifacts"))
 ENABLE_AI = os.getenv("ENABLE_AI_ANALYSIS", "true").lower() == "true"
+STUB_MODE = os.getenv("STUB_MODE", "false").lower() == "true"
 
 
 def run_command(command: List[str], output_file: str = None) -> Dict[str, Any]:
@@ -107,13 +109,55 @@ def start_scan_task(self, scan_id: str, target_url: str, tools: List[str]):
             logger.info(f"Running Trivy scan for {scan_id}")
             findings = run_trivy_scan(scan_id, target_url, scan_artifacts_path, db)
             all_findings.extend(findings)
+
+        # Optional tools (placeholders)
+        if "nikto" in tools:
+            nikto_path = scan_artifacts_path / "nikto.txt"
+            if STUB_MODE:
+                nikto_path.write_text("+ Server leaks inodes via ETags, header found on /\n", encoding="utf-8")
+            all_findings.extend(parse_nikto(nikto_path, scan_id))
+
+        if "amass" in tools:
+            amass_path = scan_artifacts_path / "amass.txt"
+            if STUB_MODE:
+                amass_path.write_text(f"sub.{target_url}\napi.{target_url}\n", encoding="utf-8")
+            all_findings.extend(parse_amass(amass_path, scan_id))
+
+        if "ffuf" in tools:
+            ffuf_path = scan_artifacts_path / "ffuf.json"
+            if STUB_MODE:
+                ffuf_path.write_text('{"results":[{"url":"http://example.com/admin","status":200,"length":1234}]}', encoding="utf-8")
+            all_findings.extend(parse_ffuf(ffuf_path, scan_id))
+
+        if "whatweb" in tools:
+            whatweb_path = scan_artifacts_path / "whatweb.json"
+            if STUB_MODE:
+                whatweb_path.write_text('[{"target":"http://example.com","plugins":{"Apache":{},"OpenSSL":{}}}]', encoding="utf-8")
+            all_findings.extend(parse_whatweb(whatweb_path, scan_id))
+
+        if "testssl" in tools:
+            testssl_path = scan_artifacts_path / "testssl.json"
+            if STUB_MODE:
+                testssl_path.write_text('{"scanResult":[{"id":"SSLv3","finding":"Obsolete protocol enabled"}]}', encoding="utf-8")
+            all_findings.extend(parse_testssl(testssl_path, scan_id))
         
         # AI Analysis (if enabled)
         if ENABLE_AI and all_findings:
             logger.info(f"Running AI analysis for {scan_id}")
-            ai_analyzer = AIAnalyzer()
+            ai = AIService()
             for finding in all_findings:
-                ai_analyzer.analyze_finding(finding, db)
+                data = {
+                    "tool": finding.tool,
+                    "title": finding.title,
+                    "severity": str(finding.severity),
+                    "endpoint": finding.endpoint,
+                    "description": finding.description or "",
+                }
+                result = ai.analyze(data)
+                finding.ai_summary = result.get("ai_summary")
+                finding.ai_recommendation = result.get("ai_recommendation")
+                finding.probable_fp = bool(result.get("probable_fp"))
+            db.commit()
         
         # Update scan status to completed
         scan.status = ScanStatus.COMPLETED
@@ -144,21 +188,38 @@ def run_nmap_scan(scan_id: str, target: str, artifacts_path: Path, db) -> List[F
     """Run Nmap scan and parse results"""
     try:
         output_file = artifacts_path / "nmap_output.xml"
+        if STUB_MODE:
+            logger.info("STUB_MODE enabled: writing stub nmap_output.xml")
+            stub_xml = f"""<?xml version='1.0'?>
+<nmaprun>
+  <host>
+    <address addr="{target}"/>
+    <ports>
+      <port protocol="tcp" portid="80">
+        <state state="open"/>
+        <service name="http" product="nginx" version="1.18"/>
+      </port>
+    </ports>
+  </host>
+</nmaprun>
+"""
+            output_file.write_text(stub_xml, encoding="utf-8")
+        else:
+            # Run Nmap
+            command = [
+                "nmap",
+                "-sV",
+                "--max-retries", "1",
+                "--host-timeout", "300s",
+                "-oX", str(output_file),
+                target
+            ]
+            result = run_command(command)
+            if not result.get("success"):
+                logger.error(f"Nmap scan failed: {result.get('error')}")
+                return []
         
-        # Run Nmap
-        command = [
-            "nmap",
-            "-sV",  # Service version detection
-            "-sC",  # Default scripts
-            "-oX", str(output_file),  # XML output
-            target
-        ]
         
-        result = run_command(command)
-        
-        if not result.get("success"):
-            logger.error(f"Nmap scan failed: {result.get('error')}")
-            return []
         
         # Parse results
         parser = NmapParser()
@@ -181,18 +242,36 @@ def run_zap_scan(scan_id: str, target: str, artifacts_path: Path, db) -> List[Fi
     """Run OWASP ZAP scan and parse results"""
     try:
         output_file = artifacts_path / "zap_output.json"
-        
-        # Run ZAP in Docker (baseline scan - non-aggressive)
-        command = [
-            "docker", "run", "--rm",
-            "-v", f"{artifacts_path}:/zap/wrk:rw",
-            "owasp/zap2docker-stable",
-            "zap-baseline.py",
-            "-t", target,
-            "-J", "zap_output.json"
-        ]
-        
-        result = run_command(command)
+        if STUB_MODE:
+            logger.info("STUB_MODE enabled: writing stub zap_output.json")
+            stub = {
+                "site": [
+                    {
+                        "@name": target,
+                        "alerts": [
+                            {
+                                "name": "X-Content-Type-Options Header Missing",
+                                "riskdesc": "Low (Confidence: Medium)",
+                                "desc": "The response does not include the X-Content-Type-Options header.",
+                                "solution": "Ensure the header 'X-Content-Type-Options: nosniff' is set.",
+                                "instances": [{"uri": f"{target}/", "method": "GET"}]
+                            }
+                        ]
+                    }
+                ]
+            }
+            output_file.write_text(json.dumps(stub), encoding="utf-8")
+        else:
+            # Run ZAP in Docker (baseline scan - non-aggressive)
+            command = [
+                "docker", "run", "--rm",
+                "-v", f"{artifacts_path}:/zap/wrk:rw",
+                "owasp/zap2docker-stable",
+                "zap-baseline.py",
+                "-t", target,
+                "-J", "zap_output.json"
+            ]
+            result = run_command(command)
         
         # ZAP returns non-zero even on successful scan with findings
         if not output_file.exists():
@@ -220,20 +299,40 @@ def run_trivy_scan(scan_id: str, target: str, artifacts_path: Path, db) -> List[
     """Run Trivy scan and parse results"""
     try:
         output_file = artifacts_path / "trivy_output.json"
-        
-        # Determine if target is a filesystem path or container image
-        # For now, we'll scan the target as a URL/filesystem
-        command = [
-            "docker", "run", "--rm",
-            "-v", f"{artifacts_path}:/output",
-            "aquasec/trivy",
-            "fs",
-            "--format", "json",
-            "--output", "/output/trivy_output.json",
-            target
-        ]
-        
-        result = run_command(command)
+        if STUB_MODE:
+            logger.info("STUB_MODE enabled: writing stub trivy_output.json")
+            stub = {
+                "Results": [
+                    {
+                        "Target": target,
+                        "Vulnerabilities": [
+                            {
+                                "VulnerabilityID": "CVE-2023-0001",
+                                "PkgName": "openssl",
+                                "InstalledVersion": "1.1.1f",
+                                "FixedVersion": "1.1.1u",
+                                "Severity": "HIGH",
+                                "Title": "OpenSSL vulnerability",
+                                "Description": "A sample vulnerability in OpenSSL",
+                                "References": ["https://example.com/cve-2023-0001"]
+                            }
+                        ]
+                    }
+                ]
+            }
+            output_file.write_text(json.dumps(stub), encoding="utf-8")
+        else:
+            # Determine if target is a filesystem path or container image
+            command = [
+                "docker", "run", "--rm",
+                "-v", f"{artifacts_path}:/output",
+                "aquasec/trivy",
+                "fs",
+                "--format", "json",
+                "--output", "/output/trivy_output.json",
+                target
+            ]
+            result = run_command(command)
         
         if not output_file.exists():
             logger.warning("Trivy output file not found (may be no vulnerabilities)")
@@ -254,4 +353,11 @@ def run_trivy_scan(scan_id: str, target: str, artifacts_path: Path, db) -> List[
     except Exception as e:
         logger.error(f"Trivy scan error: {str(e)}")
         return []
+
+
+@celery_app.task(bind=True, name="start_playbook_task")
+def start_playbook_task(self, scan_id: str, target_url: str, steps: List[str]):
+    """Run an ordered list of tools as a playbook."""
+    logger.info(f"Starting playbook for {scan_id} with steps: {steps}")
+    return start_scan_task(scan_id, target_url, steps)  # reuse orchestration
 

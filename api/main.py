@@ -7,11 +7,12 @@ import logging
 from io import BytesIO
 
 from database import engine, Base, get_db
-from models import Target, Scan, Finding
+from models import Target, Scan, Finding, Playbook
 from schemas import (
     TargetCreate, TargetResponse,
     ScanCreate, ScanResponse,
-    FindingResponse
+    FindingResponse,
+    PlaybookCreate, PlaybookResponse
 )
 from celery_client import start_scan_task
 from report_generator import ReportGenerator
@@ -143,11 +144,16 @@ async def create_scan(scan: ScanCreate, db: Session = Depends(get_db)):
             raise HTTPException(status_code=404, detail="Target not found")
         
         # Create scan record
-        db_scan = Scan(
-            target_id=scan.target_id,
-            tools=scan.tools or ["nmap", "zap", "trivy"],
-            status="pending"
-        )
+        tools = scan.tools or ["nmap", "zap", "trivy"]
+        # If playbook provided, override tools with its steps
+        if scan.playbook_id:
+            pb = db.query(Playbook).filter(Playbook.id == scan.playbook_id).first()
+            if not pb:
+                raise HTTPException(status_code=404, detail="Playbook not found")
+            if pb.steps:
+                tools = pb.steps
+
+        db_scan = Scan(target_id=scan.target_id, tools=tools, status="pending", playbook_id=scan.playbook_id)
         db.add(db_scan)
         db.commit()
         db.refresh(db_scan)
@@ -192,6 +198,15 @@ async def get_scan(scan_id: str, db: Session = Depends(get_db)):
     if not scan:
         raise HTTPException(status_code=404, detail="Scan not found")
     return scan
+
+
+@app.get("/api/scans/{scan_id}/status")
+async def get_scan_status(scan_id: str, db: Session = Depends(get_db)):
+    """Get scan status only (alias for prompt compatibility)"""
+    scan = db.query(Scan).filter(Scan.id == scan_id).first()
+    if not scan:
+        raise HTTPException(status_code=404, detail="Scan not found")
+    return {"scan_id": scan_id, "status": scan.status}
 
 
 # ==================== FINDING ENDPOINTS ====================
@@ -267,6 +282,36 @@ async def get_statistics(db: Session = Depends(get_db)):
     }
 
 
+# ==================== PLAYBOOK ENDPOINTS ====================
+
+@app.post("/api/playbooks", response_model=PlaybookResponse, status_code=201)
+async def create_playbook(pb: PlaybookCreate, db: Session = Depends(get_db)):
+    try:
+        db_pb = Playbook(name=pb.name, steps=pb.steps)
+        db.add(db_pb)
+        db.commit()
+        db.refresh(db_pb)
+        return db_pb
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/playbooks", response_model=List[PlaybookResponse])
+async def list_playbooks(db: Session = Depends(get_db)):
+    return db.query(Playbook).order_by(Playbook.created_at.desc()).all()
+
+
+@app.delete("/api/playbooks/{playbook_id}", status_code=204)
+async def delete_playbook(playbook_id: str, db: Session = Depends(get_db)):
+    pb = db.query(Playbook).filter(Playbook.id == playbook_id).first()
+    if not pb:
+        raise HTTPException(status_code=404, detail="Playbook not found")
+    db.delete(pb)
+    db.commit()
+    return None
+
+
 # ==================== REPORT ENDPOINTS ====================
 
 @app.get("/api/scans/{scan_id}/report/json")
@@ -333,6 +378,19 @@ async def download_pdf_report(scan_id: str, db: Session = Depends(get_db)):
             "Content-Disposition": f"attachment; filename=scan_report_{scan_id[:8]}.pdf"
         }
     )
+
+
+@app.get("/api/reports/{scan_id}")
+async def download_report_alias(scan_id: str, format: str, db: Session = Depends(get_db)):
+    """Alias endpoint: /api/reports/{scan_id}?format=(md|pdf|json)"""
+    fmt = format.lower()
+    if fmt == "json":
+        return await download_json_report(scan_id, db)  # type: ignore
+    if fmt in ("md", "markdown"):
+        return await download_markdown_report(scan_id, db)  # type: ignore
+    if fmt == "pdf":
+        return await download_pdf_report(scan_id, db)  # type: ignore
+    raise HTTPException(status_code=400, detail="Invalid format. Use md|pdf|json")
 
 
 if __name__ == "__main__":

@@ -8,12 +8,14 @@ SecTestOps Hub, farklı güvenlik test araçlarını tek bir web platformunda to
 
 ### Temel Özellikler
 
-- ✅ Tek panelden çoklu araç taraması
-- ✅ Nmap, OWASP ZAP ve Trivy entegrasyonu
+- ✅ Tek panelden çoklu araç taraması (8 güvenlik aracı)
 - ✅ AI destekli bulgu analizi ve öneri sistemi
 - ✅ Normalize edilmiş raporlama (PDF, Markdown, JSON)
 - ✅ CVSS skorlama ve OWASP Top 10 eşlemesi
-- ✅ Etkileşimli dashboard
+- ✅ Etkileşimli dashboard ve real-time tarama takibi
+- ✅ Playbook support - Önceden tanımlanmış tarama senaryoları
+- ✅ STUB_MODE - Test için örnek veriler
+- ✅ GitHub Actions CI/CD pipeline
 
 ## 🏗️ Mimari
 
@@ -51,14 +53,21 @@ SecTestOps Hub, farklı güvenlik test araçlarını tek bir web platformunda to
 # 1. Proje dizinine git
 cd SecTestOps_Hub
 
-# 2. Tüm servisleri başlat
+# 2. STUB_MODE ile başlat (gerçek araçlar olmadan test için)
+# veya normal mod için STUB_MODE=false kullan
+STUB_MODE=true docker-compose up -d
+
+# Veya sadece
 docker-compose up -d
 
 # 3. Tarayıcıda aç
 http://localhost:3000
 ```
 
-**API Dokümantasyonu:** http://localhost:8000/docs
+**API Dokümantasyonu:** http://localhost:8000/docs  
+**Health Check:** http://localhost:8000/health
+
+> 💡 **İpucu:** İlk çalıştırma 5-10 dakika sürebilir (Docker image'ları indiriliyor)
 
 Detaylı kurulum için → [SETUP_GUIDE.md](SETUP_GUIDE.md)
 
@@ -79,8 +88,13 @@ Detaylı kurulum için → [SETUP_GUIDE.md](SETUP_GUIDE.md)
 
 ### Güvenlik Araçları
 - **Nmap** - Ağ keşfi ve port taraması
-- **OWASP ZAP** - Web uygulama güvenlik testi
+- **OWASP ZAP** - Web uygulama güvenlik testi  
 - **Trivy** - Container ve dependency güvenlik analizi
+- **Nikto** - Web sunucu güvenlik taraması
+- **Amass** - Subdomain keşfi ve haritalama
+- **ffuf** - Web fuzzing ve endpoint keşfi
+- **WhatWeb** - Web teknolojisi parmak izi tespiti
+- **testssl.sh** - TLS/SSL güvenlik analizi
 
 ### AI/LLM
 - OpenAI API (GPT-3.5/4) veya HuggingFace modelleri
@@ -138,10 +152,9 @@ Bu proje akademik araştırma amaçlıdır.
 
 ## 📚 Dokümantasyon
 
-- **[QUICKSTART.md](QUICKSTART.md)** - 5 dakikada başla
-- **[SETUP_GUIDE.md](SETUP_GUIDE.md)** - Detaylı kurulum rehberi
+- **[TOOLS_GUIDE.md](TOOLS_GUIDE.md)** - Güvenlik araçları detaylı kılavuzu
+- **[RUN_COMMANDS.md](RUN_COMMANDS.md)** - Çalıştırma ve sorun giderme
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** - Teknik mimari dokümantasyon
-- **[CONTRIBUTING.md](CONTRIBUTING.md)** - Katkıda bulunma rehberi
 
 ## 🧪 IEEE Makale İçin
 

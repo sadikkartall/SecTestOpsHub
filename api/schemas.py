@@ -47,6 +47,7 @@ class ScanBase(BaseModel):
         default=["nmap", "zap", "trivy"],
         description="List of tools to use in scan"
     )
+    playbook_id: Optional[UUID] = Field(default=None, description="Optional playbook to use")
 
     @field_validator('tools')
     @classmethod
@@ -70,6 +71,25 @@ class ScanResponse(ScanBase):
     created_at: datetime
     error_message: Optional[str]
     scan_metadata: Optional[Dict[str, Any]] = None
+
+    class Config:
+        from_attributes = True
+
+
+# ==================== PLAYBOOK SCHEMAS ====================
+
+class PlaybookBase(BaseModel):
+    name: str = Field(..., max_length=200)
+    steps: Optional[List[str]] = Field(default=None, description="Ordered list of tool names")
+
+
+class PlaybookCreate(PlaybookBase):
+    pass
+
+
+class PlaybookResponse(PlaybookBase):
+    id: UUID
+    created_at: datetime
 
     class Config:
         from_attributes = True

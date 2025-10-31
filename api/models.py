@@ -47,6 +47,7 @@ class Scan(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     target_id = Column(UUID(as_uuid=True), ForeignKey("targets.id", ondelete="CASCADE"), nullable=False)
+    playbook_id = Column(UUID(as_uuid=True), ForeignKey("playbooks.id", ondelete="SET NULL"), nullable=True)
     tools = Column(ARRAY(String), nullable=False, default=["nmap", "zap", "trivy"])
     status = Column(SQLEnum(ScanStatus), default=ScanStatus.PENDING, nullable=False, index=True)
     
@@ -59,6 +60,7 @@ class Scan(Base):
 
     # Relationships
     target = relationship("Target", back_populates="scans")
+    playbook = relationship("Playbook", back_populates="scans")
     findings = relationship("Finding", back_populates="scan", cascade="all, delete-orphan")
 
     def __repr__(self):
@@ -99,3 +101,30 @@ class Finding(Base):
     def __repr__(self):
         return f"<Finding(id={self.id}, tool={self.tool}, severity={self.severity}, title={self.title[:50]})>"
 
+
+class Artifact(Base):
+    """Artifact produced by tool executions"""
+    __tablename__ = "artifacts"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    scan_id = Column(UUID(as_uuid=True), ForeignKey("scans.id", ondelete="CASCADE"), nullable=False, index=True)
+    tool = Column(String(50), nullable=False, index=True)
+    path = Column(String(1000), nullable=False)
+    format = Column(String(50), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    # Relationships
+    scan = relationship("Scan", backref="artifacts")
+
+
+class Playbook(Base):
+    """Playbook definition for orchestrated scans"""
+    __tablename__ = "playbooks"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String(200), nullable=False, unique=True)
+    steps = Column(JSONB, nullable=True)  # ordered list of tools/params
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    # Relationships
+    scans = relationship("Scan", back_populates="playbook")

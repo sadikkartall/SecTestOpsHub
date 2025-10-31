@@ -19,9 +19,16 @@ import {
   CircularProgress,
   Alert,
   Tooltip,
+  FormGroup,
+  FormControlLabel,
+  Checkbox,
+  Select,
+  MenuItem,
+  InputLabel,
+  FormControl,
 } from '@mui/material';
-import { Add as AddIcon, Delete as DeleteIcon, Scanner as ScanIcon } from '@mui/icons-material';
-import { getTargets, createTarget, deleteTarget, createScan } from '../api/api';
+import { Add as AddIcon, Delete as DeleteIcon, Scanner as ScanIcon, PlayCircle as PlayIcon } from '@mui/icons-material';
+import { getTargets, createTarget, deleteTarget, createScan, getPlaybooks } from '../api/api';
 
 function Targets() {
   const [targets, setTargets] = useState([]);
@@ -31,8 +38,15 @@ function Targets() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
+  const [scanDialog, setScanDialog] = useState(false);
+  const [selectedTargetId, setSelectedTargetId] = useState(null);
+  const [tools, setTools] = useState({ nmap: true, zap: true, trivy: true });
+  const [playbooks, setPlaybooks] = useState([]);
+  const [playbookId, setPlaybookId] = useState('');
+
   useEffect(() => {
     fetchTargets();
+    fetchPlaybooks();
   }, []);
 
   const fetchTargets = async () => {
@@ -43,6 +57,15 @@ function Targets() {
       setError('Failed to load targets');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchPlaybooks = async () => {
+    try {
+      const res = await getPlaybooks();
+      setPlaybooks(res.data || []);
+    } catch (_) {
+      // ignore
     }
   };
 
@@ -72,13 +95,25 @@ function Targets() {
     }
   };
 
-  const handleStartScan = async (targetId) => {
+  const openScanDialog = (targetId) => {
+    setSelectedTargetId(targetId);
+    setScanDialog(true);
+  };
+
+  const handleStartScan = async () => {
     try {
+      const selectedTools = Object.entries(tools)
+        .filter(([_, v]) => v)
+        .map(([k]) => k);
       await createScan({
-        target_id: targetId,
-        tools: ['nmap', 'zap', 'trivy'],
+        target_id: selectedTargetId,
+        tools: selectedTools.length ? selectedTools : undefined,
+        playbook_id: playbookId || undefined,
       });
       setSuccess('Scan started successfully');
+      setScanDialog(false);
+      setTools({ nmap: true, zap: true, trivy: true });
+      setPlaybookId('');
       setTimeout(() => setSuccess(''), 3000);
     } catch (error) {
       setError('Failed to start scan');
@@ -104,11 +139,7 @@ function Targets() {
             Manage your scan targets
           </Typography>
         </Box>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={() => setOpenDialog(true)}
-        >
+        <Button variant="contained" startIcon={<AddIcon />} onClick={() => setOpenDialog(true)}>
           Add Target
         </Button>
       </Box>
@@ -140,19 +171,13 @@ function Targets() {
                   <TableCell>{target.description || '-'}</TableCell>
                   <TableCell>{new Date(target.created_at).toLocaleString()}</TableCell>
                   <TableCell align="center">
-                    <Tooltip title="Start Scan">
-                      <IconButton
-                        color="primary"
-                        onClick={() => handleStartScan(target.id)}
-                      >
+                    <Tooltip title="Start Scan (quick)">
+                      <IconButton color="primary" onClick={() => openScanDialog(target.id)}>
                         <ScanIcon />
                       </IconButton>
                     </Tooltip>
                     <Tooltip title="Delete">
-                      <IconButton
-                        color="error"
-                        onClick={() => handleDeleteTarget(target.id)}
-                      >
+                      <IconButton color="error" onClick={() => handleDeleteTarget(target.id)}>
                         <DeleteIcon />
                       </IconButton>
                     </Tooltip>
@@ -193,13 +218,46 @@ function Targets() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpenDialog(false)}>Cancel</Button>
-          <Button
-            onClick={handleAddTarget}
-            variant="contained"
-            disabled={!newTarget.url}
-          >
-            Add Target
-          </Button>
+          <Button onClick={handleAddTarget} variant="contained" disabled={!newTarget.url}>Add Target</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Create Scan Dialog */}
+      <Dialog open={scanDialog} onClose={() => setScanDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Create Scan</DialogTitle>
+        <DialogContent>
+          <Typography variant="subtitle2" gutterBottom>Tools</Typography>
+          <FormGroup row>
+            {['nmap', 'zap', 'trivy'].map((t) => (
+              <FormControlLabel
+                key={t}
+                control={<Checkbox checked={tools[t]} onChange={(e) => setTools({ ...tools, [t]: e.target.checked })} />}
+                label={t.toUpperCase()}
+              />
+            ))}
+          </FormGroup>
+
+          <Box mt={2}>
+            <FormControl fullWidth size="small">
+              <InputLabel>Playbook (optional)</InputLabel>
+              <Select value={playbookId} label="Playbook (optional)" onChange={(e) => setPlaybookId(e.target.value)}>
+                <MenuItem value="">None</MenuItem>
+                {playbooks.map((pb) => (
+                  <MenuItem key={pb.id} value={pb.id}>{pb.name}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Box>
+
+          <Box mt={2}>
+            <Typography variant="body2" color="textSecondary">
+              If a playbook is selected, its steps override selected tools.
+            </Typography>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setScanDialog(false)}>Cancel</Button>
+          <Button onClick={handleStartScan} variant="contained" startIcon={<PlayIcon />}>Start</Button>
         </DialogActions>
       </Dialog>
     </Box>

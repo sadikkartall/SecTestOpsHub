@@ -9,49 +9,43 @@ const api = axios.create({
   },
 });
 
-// Request interceptor
 api.interceptors.request.use(
-  (config) => {
-    return config;
-  },
-  (error) => {
-    return Promise.reject(error);
-  }
+  (config) => config,
+  (error) => Promise.reject(error)
 );
 
-// Response interceptor
 api.interceptors.response.use(
-  (response) => {
-    return response;
-  },
-  (error) => {
-    console.error('API Error:', error.response || error.message);
-    return Promise.reject(error);
-  }
+  (response) => response,
+  (error) => Promise.reject(error)
 );
 
-// ==================== TARGETS ====================
-
+// Targets
 export const getTargets = () => api.get('/api/targets');
 export const getTarget = (id) => api.get(`/api/targets/${id}`);
 export const createTarget = (data) => api.post('/api/targets', data);
 export const deleteTarget = (id) => api.delete(`/api/targets/${id}`);
 
-// ==================== SCANS ====================
-
+// Scans
 export const getScans = (params) => api.get('/api/scans', { params });
 export const getScan = (id) => api.get(`/api/scans/${id}`);
 export const createScan = (data) => api.post('/api/scans', data);
 
-// ==================== FINDINGS ====================
-
+// Findings
 export const getFindings = (params) => api.get('/api/findings', { params });
 export const getFinding = (id) => api.get(`/api/findings/${id}`);
 export const getScanFindings = (scanId) => api.get(`/api/scans/${scanId}/findings`);
 
-// ==================== STATISTICS ====================
-
+// Statistics
 export const getStatistics = () => api.get('/api/statistics');
+
+// Reports
+export const downloadReport = (scanId, format = 'json') =>
+  api.get(`/api/reports/${scanId}`, { params: { format }, responseType: format === 'pdf' ? 'blob' : 'text' });
+
+// Playbooks
+export const getPlaybooks = () => api.get('/api/playbooks');
+export const createPlaybook = (data) => api.post('/api/playbooks', data);
+export const deletePlaybook = (id) => api.delete(`/api/playbooks/${id}`);
 
 export default api;
 
