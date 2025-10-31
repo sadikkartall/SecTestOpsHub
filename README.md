@@ -154,9 +154,12 @@ MIT License - Akademik araştırma ve eğitim amaçlı kullanım.
 
 ## 📚 Dokümantasyon
 
-- **[TOOLS_GUIDE.md](TOOLS_GUIDE.md)** - Güvenlik araçları detaylı kılavuzu
-- **[RUN_COMMANDS.md](RUN_COMMANDS.md)** - Çalıştırma ve sorun giderme
-- **[ARCHITECTURE.md](ARCHITECTURE.md)** - Teknik mimari dokümantasyon
+Proje dokümantasyon dosyaları:
+
+- **[RUN_COMMANDS.md](RUN_COMMANDS.md)** - Detaylı çalıştırma komutları ve sorun giderme
+- **[TOOLS_GUIDE.md](TOOLS_GUIDE.md)** - 8 güvenlik aracı hakkında detaylı bilgi
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** - Sistem mimarisi ve teknik detaylar
+- **[CONTRIBUTING.md](CONTRIBUTING.md)** - Katkıda bulunma rehberi
 
 ## 🎓 IEEE Makale İçin
 
