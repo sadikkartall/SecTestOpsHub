@@ -148,7 +148,9 @@ Findings
 
 ## 📄 Lisans
 
-Bu proje akademik araştırma amaçlıdır.
+MIT License - Akademik araştırma ve eğitim amaçlı kullanım.
+
+[Lisans detayları için LICENSE dosyasına bakın](LICENSE)
 
 ## 📚 Dokümantasyon
 
@@ -156,15 +158,15 @@ Bu proje akademik araştırma amaçlıdır.
 - **[RUN_COMMANDS.md](RUN_COMMANDS.md)** - Çalıştırma ve sorun giderme
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** - Teknik mimari dokümantasyon
 
-## 🧪 IEEE Makale İçin
+## 🎓 IEEE Makale İçin
 
-Bu proje akademik araştırma amaçlıdır. Test metrikleri toplama ve deneysel veriler için [SETUP_GUIDE.md](SETUP_GUIDE.md) dosyasının "IEEE Makale İçin Notlar" bölümüne bakın.
+Bu proje IEEE bildirisi kapsamında geliştirilmiştir. Test metrikleri toplama, deneysel veriler ve akademik katkılar için detaylı dokümantasyona bakın.
 
-**Test Metrikleri:**
-- False Positive Oranı
-- Triage Süresi (AI vs Manuel)
-- OWASP Top 10 Coverage
-- Kullanıcı Memnuniyeti (SUS Score)
+**Toplanacak Metrikler:**
+- False Positive Oranı (AI-assisted vs Manual)
+- Triage Süresi (Analiz süresi karşılaştırması)
+- OWASP Top 10 Coverage (Kapsama oranı)
+- Kullanıcı Memnuniyeti (SUS Score, Test grubu)
 
 ## 🤝 Katkıda Bulunma
 
