@@ -52,7 +52,7 @@ class ScanBase(BaseModel):
     @field_validator('tools')
     @classmethod
     def validate_tools(cls, v: List[str]) -> List[str]:
-        allowed_tools = {"nmap", "zap", "trivy"}
+        allowed_tools = {"nmap", "zap", "trivy", "nikto", "amass", "ffuf", "whatweb", "testssl"}
         for tool in v:
             if tool not in allowed_tools:
                 raise ValueError(f"Invalid tool: {tool}. Allowed: {allowed_tools}")

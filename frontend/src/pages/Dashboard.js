@@ -66,6 +66,14 @@ function Dashboard() {
       setStats(response.data);
     } catch (error) {
       console.error('Failed to fetch statistics:', error);
+      // Set default stats on error
+      setStats({
+        targets: 0,
+        scans: 0,
+        findings: 0,
+        severity_breakdown: { critical: 0, high: 0, medium: 0, low: 0, info: 0 },
+        scan_status_breakdown: { pending: 0, running: 0, completed: 0, failed: 0 }
+      });
     } finally {
       setLoading(false);
     }
@@ -75,6 +83,14 @@ function Dashboard() {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="80vh">
         <CircularProgress />
+      </Box>
+    );
+  }
+
+  if (!stats) {
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="80vh">
+        <Typography variant="h6">Failed to load statistics</Typography>
       </Box>
     );
   }

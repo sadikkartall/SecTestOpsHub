@@ -40,7 +40,16 @@ function Targets() {
 
   const [scanDialog, setScanDialog] = useState(false);
   const [selectedTargetId, setSelectedTargetId] = useState(null);
-  const [tools, setTools] = useState({ nmap: true, zap: true, trivy: true });
+  const [tools, setTools] = useState({ 
+    nmap: true, 
+    zap: true, 
+    trivy: true,
+    nikto: false,
+    amass: false,
+    ffuf: false,
+    whatweb: false,
+    testssl: false
+  });
   const [playbooks, setPlaybooks] = useState([]);
   const [playbookId, setPlaybookId] = useState('');
 
@@ -112,7 +121,7 @@ function Targets() {
       });
       setSuccess('Scan started successfully');
       setScanDialog(false);
-      setTools({ nmap: true, zap: true, trivy: true });
+      setTools({ nmap: true, zap: true, trivy: true, nikto: false, amass: false, ffuf: false, whatweb: false, testssl: false });
       setPlaybookId('');
       setTimeout(() => setSuccess(''), 3000);
     } catch (error) {
@@ -228,7 +237,7 @@ function Targets() {
         <DialogContent>
           <Typography variant="subtitle2" gutterBottom>Tools</Typography>
           <FormGroup row>
-            {['nmap', 'zap', 'trivy'].map((t) => (
+            {['nmap', 'zap', 'trivy', 'nikto', 'amass', 'ffuf', 'whatweb', 'testssl'].map((t) => (
               <FormControlLabel
                 key={t}
                 control={<Checkbox checked={tools[t]} onChange={(e) => setTools({ ...tools, [t]: e.target.checked })} />}

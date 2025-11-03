@@ -37,7 +37,7 @@ ENABLE_AI = os.getenv("ENABLE_AI_ANALYSIS", "true").lower() == "true"
 STUB_MODE = os.getenv("STUB_MODE", "false").lower() == "true"
 
 
-def run_command(command: List[str], output_file: str = None) -> Dict[str, Any]:
+def run_command(command: List[str], output_file: str = None, timeout: int = 600) -> Dict[str, Any]:
     """Run a shell command and capture output"""
     try:
         logger.info(f"Executing command: {' '.join(command)}")
@@ -45,7 +45,7 @@ def run_command(command: List[str], output_file: str = None) -> Dict[str, Any]:
             command,
             capture_output=True,
             text=True,
-            timeout=600  # 10 minutes timeout
+            timeout=timeout
         )
         
         output = {
@@ -110,36 +110,31 @@ def start_scan_task(self, scan_id: str, target_url: str, tools: List[str]):
             findings = run_trivy_scan(scan_id, target_url, scan_artifacts_path, db)
             all_findings.extend(findings)
 
-        # Optional tools (placeholders)
+        # Additional tools
         if "nikto" in tools:
-            nikto_path = scan_artifacts_path / "nikto.txt"
-            if STUB_MODE:
-                nikto_path.write_text("+ Server leaks inodes via ETags, header found on /\n", encoding="utf-8")
-            all_findings.extend(parse_nikto(nikto_path, scan_id))
+            logger.info(f"Running Nikto scan for {scan_id}")
+            findings = run_nikto_scan(scan_id, target_url, scan_artifacts_path, db)
+            all_findings.extend(findings)
 
         if "amass" in tools:
-            amass_path = scan_artifacts_path / "amass.txt"
-            if STUB_MODE:
-                amass_path.write_text(f"sub.{target_url}\napi.{target_url}\n", encoding="utf-8")
-            all_findings.extend(parse_amass(amass_path, scan_id))
+            logger.info(f"Running Amass scan for {scan_id}")
+            findings = run_amass_scan(scan_id, target_url, scan_artifacts_path, db)
+            all_findings.extend(findings)
 
         if "ffuf" in tools:
-            ffuf_path = scan_artifacts_path / "ffuf.json"
-            if STUB_MODE:
-                ffuf_path.write_text('{"results":[{"url":"http://example.com/admin","status":200,"length":1234}]}', encoding="utf-8")
-            all_findings.extend(parse_ffuf(ffuf_path, scan_id))
+            logger.info(f"Running ffuf scan for {scan_id}")
+            findings = run_ffuf_scan(scan_id, target_url, scan_artifacts_path, db)
+            all_findings.extend(findings)
 
         if "whatweb" in tools:
-            whatweb_path = scan_artifacts_path / "whatweb.json"
-            if STUB_MODE:
-                whatweb_path.write_text('[{"target":"http://example.com","plugins":{"Apache":{},"OpenSSL":{}}}]', encoding="utf-8")
-            all_findings.extend(parse_whatweb(whatweb_path, scan_id))
+            logger.info(f"Running WhatWeb scan for {scan_id}")
+            findings = run_whatweb_scan(scan_id, target_url, scan_artifacts_path, db)
+            all_findings.extend(findings)
 
         if "testssl" in tools:
-            testssl_path = scan_artifacts_path / "testssl.json"
-            if STUB_MODE:
-                testssl_path.write_text('{"scanResult":[{"id":"SSLv3","finding":"Obsolete protocol enabled"}]}', encoding="utf-8")
-            all_findings.extend(parse_testssl(testssl_path, scan_id))
+            logger.info(f"Running testssl scan for {scan_id}")
+            findings = run_testssl_scan(scan_id, target_url, scan_artifacts_path, db)
+            all_findings.extend(findings)
         
         # AI Analysis (if enabled)
         if ENABLE_AI and all_findings:
@@ -352,6 +347,218 @@ def run_trivy_scan(scan_id: str, target: str, artifacts_path: Path, db) -> List[
         
     except Exception as e:
         logger.error(f"Trivy scan error: {str(e)}")
+        return []
+
+
+def run_nikto_scan(scan_id: str, target: str, artifacts_path: Path, db) -> List[Finding]:
+    """Run Nikto scan and parse results"""
+    try:
+        output_file = artifacts_path / "nikto.txt"
+        if STUB_MODE:
+            logger.info("STUB_MODE enabled: writing stub nikto.txt")
+            output_file.write_text("+ Server leaks inodes via ETags, header found on /\n+ OSVDB-3092: /phpinfo.php: This gives a lot of system information.\n", encoding="utf-8")
+        else:
+            # Run Nikto
+            command = ["nikto", "-h", target, "-o", str(output_file), "-Format", "txt"]
+            result = run_command(command)
+            if not result.get("success"):
+                logger.error(f"Nikto scan failed: {result.get('error')}")
+                return []
+        
+        # Parse results
+        findings = parse_nikto(output_file, scan_id)
+        
+        # Save to database
+        for finding in findings:
+            db.add(finding)
+        db.commit()
+        
+        logger.info(f"Nikto scan completed: {len(findings)} findings")
+        return findings
+        
+    except Exception as e:
+        logger.error(f"Nikto scan error: {str(e)}")
+        return []
+
+
+def run_amass_scan(scan_id: str, target: str, artifacts_path: Path, db) -> List[Finding]:
+    """Run Amass subdomain discovery and parse results"""
+    try:
+        output_file = artifacts_path / "amass.txt"
+        if STUB_MODE:
+            logger.info("STUB_MODE enabled: writing stub amass.txt")
+            output_file.write_text(f"sub.{target}\napi.{target}\nadmin.{target}\n", encoding="utf-8")
+        else:
+            # Amass works with domains, not IPs. If IP, skip or try passive mode
+            if target.replace('.', '').isdigit() or not any(c.isalpha() for c in target):
+                logger.warning(f"Amass requires a domain name, not IP address: {target}")
+                return []
+            
+            # Extract domain from URL if needed
+            domain = target.replace('http://', '').replace('https://', '').split('/')[0].split(':')[0]
+            
+            # Run Amass with passive mode (faster, no DNS brute force)
+            command = ["amass", "enum", "-passive", "-d", domain, "-o", str(output_file)]
+            result = run_command(command, timeout=300)  # 5 minute timeout
+            if not result.get("success"):
+                logger.error(f"Amass scan failed: {result.get('error')}")
+                # If file exists, try to parse partial results
+                if not output_file.exists():
+                    return []
+        
+        # Parse results
+        findings = parse_amass(output_file, scan_id)
+        
+        # Save to database
+        for finding in findings:
+            db.add(finding)
+        db.commit()
+        
+        logger.info(f"Amass scan completed: {len(findings)} findings")
+        return findings
+        
+    except Exception as e:
+        logger.error(f"Amass scan error: {str(e)}")
+        return []
+
+
+def run_ffuf_scan(scan_id: str, target: str, artifacts_path: Path, db) -> List[Finding]:
+    """Run ffuf web fuzzer and parse results"""
+    try:
+        output_file = artifacts_path / "ffuf.json"
+        if STUB_MODE:
+            logger.info("STUB_MODE enabled: writing stub ffuf.json")
+            stub_data = {
+                "results": [
+                    {"url": f"{target}/admin", "status": 200, "length": 1234},
+                    {"url": f"{target}/backup", "status": 403, "length": 567}
+                ]
+            }
+            output_file.write_text(json.dumps(stub_data), encoding="utf-8")
+        else:
+            # Prepare URL - add http:// if not present
+            url = target if target.startswith(('http://', 'https://')) else f"http://{target}"
+            # Run ffuf
+            command = ["ffuf", "-u", f"{url}/FUZZ", "-w", "/usr/share/wordlists/common.txt", "-o", str(output_file), "-of", "json", "-t", "10", "-timeout", "5"]
+            result = run_command(command, timeout=300)  # 5 minute timeout
+            if not result.get("success"):
+                logger.error(f"ffuf scan failed: {result.get('error')}")
+                # Try to parse partial results if file exists
+                if output_file.exists():
+                    logger.info("Attempting to parse partial ffuf results")
+                else:
+                    return []
+        
+        # Parse results
+        findings = parse_ffuf(output_file, scan_id)
+        
+        # Save to database
+        for finding in findings:
+            db.add(finding)
+        db.commit()
+        
+        logger.info(f"ffuf scan completed: {len(findings)} findings")
+        return findings
+        
+    except Exception as e:
+        logger.error(f"ffuf scan error: {str(e)}")
+        return []
+
+
+def run_whatweb_scan(scan_id: str, target: str, artifacts_path: Path, db) -> List[Finding]:
+    """Run WhatWeb technology fingerprinting and parse results"""
+    try:
+        output_file = artifacts_path / "whatweb.json"
+        if STUB_MODE:
+            logger.info("STUB_MODE enabled: writing stub whatweb.json")
+            stub_data = [{
+                "target": target,
+                "plugins": {
+                    "Apache": {"version": "2.4.41"},
+                    "OpenSSL": {},
+                    "PHP": {"version": "7.4"}
+                }
+            }]
+            output_file.write_text(json.dumps(stub_data), encoding="utf-8")
+        else:
+            # Prepare URL - add http:// if not present
+            url = target if target.startswith(('http://', 'https://')) else f"http://{target}"
+            # Run WhatWeb
+            command = ["whatweb", url, "--log-json", str(output_file), "--no-errors"]
+            result = run_command(command, timeout=120)
+            if not result.get("success"):
+                logger.error(f"WhatWeb scan failed: {result.get('error')}")
+                # Try to parse if file exists (WhatWeb might write partial output)
+                if not output_file.exists():
+                    return []
+        
+        # Parse results
+        findings = parse_whatweb(output_file, scan_id)
+        
+        # Save to database
+        for finding in findings:
+            db.add(finding)
+        db.commit()
+        
+        logger.info(f"WhatWeb scan completed: {len(findings)} findings")
+        return findings
+        
+    except Exception as e:
+        logger.error(f"WhatWeb scan error: {str(e)}")
+        return []
+
+
+def run_testssl_scan(scan_id: str, target: str, artifacts_path: Path, db) -> List[Finding]:
+    """Run testssl.sh and parse results"""
+    try:
+        output_file = artifacts_path / "testssl.json"
+        if STUB_MODE:
+            logger.info("STUB_MODE enabled: writing stub testssl.json")
+            stub_data = {
+                "scanResult": [
+                    {"id": "SSLv3", "finding": "Obsolete protocol enabled"},
+                    {"id": "TLS1.2", "finding": "Good"}
+                ]
+            }
+            output_file.write_text(json.dumps(stub_data), encoding="utf-8")
+        else:
+            # Prepare URL - testssl needs hostname:port format
+            # If IP, try both 443 (HTTPS) and 80 (HTTP)
+            if target.startswith(('http://', 'https://')):
+                url = target.replace('http://', '').replace('https://', '')
+            else:
+                url = target
+            
+            # Try HTTPS first (port 443)
+            test_target = f"{url}:443" if ':' not in url else url
+            command = ["testssl.sh", "--json", str(output_file), test_target]
+            result = run_command(command, timeout=300)
+            
+            # If HTTPS fails, try HTTP (port 80)
+            if not result.get("success") and ':443' in test_target:
+                logger.info(f"HTTPS scan failed, trying HTTP on port 80")
+                test_target = f"{url}:80"
+                command = ["testssl.sh", "--json", str(output_file), test_target]
+                result = run_command(command, timeout=300)
+            
+            if not result.get("success"):
+                logger.error(f"testssl scan failed: {result.get('error')}")
+                if not output_file.exists():
+                    return []
+        
+        # Parse results
+        findings = parse_testssl(output_file, scan_id)
+        
+        # Save to database
+        for finding in findings:
+            db.add(finding)
+        db.commit()
+        
+        logger.info(f"testssl scan completed: {len(findings)} findings")
+        return findings
+        
+    except Exception as e:
+        logger.error(f"testssl scan error: {str(e)}")
         return []
 
 

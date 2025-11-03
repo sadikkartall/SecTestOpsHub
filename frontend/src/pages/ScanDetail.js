@@ -28,24 +28,29 @@ function ScanDetail() {
   const [loading, setLoading] = useState(true);
   const [anchorEl, setAnchorEl] = useState(null);
 
-  useEffect(() => {
-    fetchScanData();
-  }, [scanId]);
-
   const fetchScanData = async () => {
+    if (!scanId) return;
+    setLoading(true);
     try {
       const [scanRes, findingsRes] = await Promise.all([
         getScan(scanId),
         getScanFindings(scanId),
       ]);
-      setScan(scanRes.data);
-      setFindings(findingsRes.data);
+      setScan(scanRes.data || null);
+      setFindings(findingsRes.data || []);
     } catch (error) {
       console.error('Failed to load scan data:', error);
+      setScan(null);
+      setFindings([]);
     } finally {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    fetchScanData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scanId]);
 
   const handleDownloadClick = (event) => {
     setAnchorEl(event.currentTarget);
@@ -65,6 +70,14 @@ function ScanDetail() {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="80vh">
         <CircularProgress />
+      </Box>
+    );
+  }
+
+  if (!scan) {
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="80vh">
+        <Typography variant="h6">Scan not found</Typography>
       </Box>
     );
   }

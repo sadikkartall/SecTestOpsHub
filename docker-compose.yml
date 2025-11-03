@@ -47,7 +47,6 @@ services:
       SECRET_KEY: your-secret-key-change-in-production
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     volumes:
-      - ./api:/app
       - ./artifacts:/app/artifacts
     depends_on:
       postgres:
@@ -57,7 +56,7 @@ services:
     networks:
       - sectestops_network
     restart: on-failure
-    command: sh -c "sleep 5 && uvicorn main:app --host 0.0.0.0 --port 8000 --reload"
+    command: sh -c "sleep 5 && uvicorn main:app --host 0.0.0.0 --port 8000"
 
   # Celery Worker
   worker:
@@ -70,10 +69,9 @@ services:
       REDIS_URL: redis://redis:6379/0
       DOCKER_HOST: unix:///var/run/docker.sock
       STUB_MODE: ${STUB_MODE:-false}
-      ENABLE_AI_ANALYSIS: ${ENABLE_AI_ANALYSIS:-true}
+      ENABLE_AI_ANALYSIS: ${ENABLE_AI_ANALYSIS:-false}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     volumes:
-      - ./worker:/app
       - ./artifacts:/app/artifacts
       - /var/run/docker.sock:/var/run/docker.sock  # Docker-in-Docker için
     depends_on:
@@ -96,15 +94,11 @@ services:
       - "3000:3000"
     environment:
       REACT_APP_API_URL: http://localhost:8000
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
+      HOST: 0.0.0.0
     depends_on:
       - api
     networks:
       - sectestops_network
-    stdin_open: true
-    tty: true
 
 volumes:
   postgres_data:
