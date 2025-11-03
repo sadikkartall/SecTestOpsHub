@@ -57,6 +57,12 @@ services:
       - sectestops_network
     restart: on-failure
     command: sh -c "sleep 5 && uvicorn main:app --host 0.0.0.0 --port 8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
   # Celery Worker
   worker:
@@ -96,7 +102,8 @@ services:
       REACT_APP_API_URL: http://localhost:8000
       HOST: 0.0.0.0
     depends_on:
-      - api
+      api:
+        condition: service_healthy
     networks:
       - sectestops_network
 

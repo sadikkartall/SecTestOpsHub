@@ -55,21 +55,27 @@ SecTestOps Hub, farklı güvenlik test araçlarını tek bir web platformunda to
 # 1. Proje dizinine git
 cd SecTestOps_Hub
 
-# 2. STUB_MODE ile başlat (gerçek araçlar olmadan test için)
-# veya normal mod için STUB_MODE=false kullan
-STUB_MODE=true docker-compose up -d
-
-# Veya sadece
+# 2. Docker Compose ile başlat (tüm servisleri otomatik başlatır)
 docker-compose up -d
 
-# 3. Tarayıcıda aç
+# İlk çalıştırma için build gerekir (5-10 dakika sürebilir)
+# docker-compose up -d --build
+
+# 3. Servislerin hazır olmasını bekle (30-60 saniye)
+# Ardından tarayıcıda aç
 http://localhost:3000
 ```
 
 **API Dokümantasyonu:** http://localhost:8000/docs  
 **Health Check:** http://localhost:8000/health
 
-> 💡 **İpucu:** İlk çalıştırma 5-10 dakika sürebilir (Docker image'ları indiriliyor)
+> 💡 **Notlar:**
+> - İlk çalıştırma 5-10 dakika sürebilir (Docker image'ları indiriliyor ve build ediliyor)
+> - Frontend, API hazır olana kadar bekler (healthcheck ile)
+> - Tüm servisler (PostgreSQL, Redis, API, Worker, Frontend) otomatik başlatılır
+> - Veritabanı tabloları otomatik oluşturulur
+> - Gerçek taramalar için: `STUB_MODE=false docker-compose up -d`
+> - Test için: `STUB_MODE=true docker-compose up -d` (varsayılan: false)
 
 Detaylı komutlar ve sorun giderme için → [RUN_COMMANDS.md](RUN_COMMANDS.md)
 
