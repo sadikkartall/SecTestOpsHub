@@ -1,6 +1,0 @@
-{
-  "commandline": "gobuster dir",
-  "target": "http://scanme.nmap.org/",
-  "results": [],
-  "total": 0
-}

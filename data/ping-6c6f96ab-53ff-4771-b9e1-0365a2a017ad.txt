@@ -1,5 +1,0 @@
-PING 4 (0.0.0.4) 56(84) bytes of data.
-
---- 4 ping statistics ---
-4 packets transmitted, 0 received, 100% packet loss, time 3072ms
-
