@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SecTestOpsHub Panel</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,<svg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27><rect width=%27100%27 height=%27100%27 rx=%2718%27 fill=%27%23111a2f%27/><text x=%2726%27 y=%2761%27 font-size=%2746%27 fill=%27%235f9bff%27 font-family=%27Arial%27>SH</text></svg>"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <!-- Basit bir başlık ve açıklama -->
+    <header>
+      <h1>SecTestOpsHub</h1>
+      <p>Güvenlik araçlarını adım adım ekleyip orkestre eden panel</p>
+    </header>
+
+    <!-- Form alanı -->
+    <section class="card">
+      <h2>Tarama Oluştur</h2>
+      <form id="scan-form">
+        <label for="target-url">Hedef URL</label>
+        <input
+          type="text"
+          id="target-url"
+          name="target-url"
+          placeholder="ör. instagram.com veya 45.33.32.156"
+          required
+        />
+
+        <fieldset class="tool-grid">
+          <legend>Araç Seçimi (opsiyonel)</legend>
+          <label><input type="checkbox" name="tool" value="ping" checked /> Ping</label>
+          <label><input type="checkbox" name="tool" value="whois" checked /> Whois</label>
+          <label><input type="checkbox" name="tool" value="nmap" checked /> Nmap</label>
+          <label><input type="checkbox" name="tool" value="nikto" checked /> Nikto</label>
+          <label><input type="checkbox" name="tool" value="gobuster" checked /> Gobuster</label>
+          <label><input type="checkbox" name="tool" value="zap" checked /> ZAP</label>
+          <label><input type="checkbox" name="tool" value="testssl" checked /> testssl.sh</label>
+          <label><input type="checkbox" name="tool" value="dnsrecon" checked /> dnsrecon</label>
+          <label><input type="checkbox" name="tool" value="theharvester" checked /> theHarvester</label>
+          <label><input type="checkbox" name="tool" value="amass" checked /> Amass</label>
+        </fieldset>
+
+        <button type="submit">Planı Oluştur</button>
+      </form>
+      <p class="hint">
+        Not: URL şeması (http/https) eklemeseniz de otomatik tamamlanır. Araçları seçerek yalnızca istediğiniz taramayı çalıştırabilirsiniz.
+      </p>
+      <div id="result" class="result"></div>
+    </section>
+
+    <script src="./main.js"></script>
+  </body>
+</html>
+
+

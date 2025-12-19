@@ -1,0 +1,8 @@
+PING 45.33.32.156 (45.33.32.156) 56(84) bytes of data.
+64 bytes from 45.33.32.156: icmp_seq=1 ttl=63 time=249 ms
+64 bytes from 45.33.32.156: icmp_seq=2 ttl=63 time=244 ms
+64 bytes from 45.33.32.156: icmp_seq=3 ttl=63 time=241 ms
+
+--- 45.33.32.156 ping statistics ---
+4 packets transmitted, 3 received, 25% packet loss, time 3003ms
+rtt min/avg/max/mdev = 240.927/244.890/249.397/3.479 ms

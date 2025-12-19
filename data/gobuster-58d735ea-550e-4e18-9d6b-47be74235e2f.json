@@ -1,0 +1,165 @@
+{
+  "commandline": "gobuster dir",
+  "target": "http://scanme.nmap.org/",
+  "results": [
+    {
+      "url": "http://scanme.nmap.org/.hta.txt",
+      "status": 403,
+      "length": 290
+    },
+    {
+      "url": "http://scanme.nmap.org/.hta",
+      "status": 403,
+      "length": 286
+    },
+    {
+      "url": "http://scanme.nmap.org/.hta.js",
+      "status": 403,
+      "length": 289
+    },
+    {
+      "url": "http://scanme.nmap.org/.hta.bak",
+      "status": 403,
+      "length": 290
+    },
+    {
+      "url": "http://scanme.nmap.org/.hta.php",
+      "status": 403,
+      "length": 290
+    },
+    {
+      "url": "http://scanme.nmap.org/.htpasswd.php",
+      "status": 403,
+      "length": 295
+    },
+    {
+      "url": "http://scanme.nmap.org/.htaccess.php",
+      "status": 403,
+      "length": 295
+    },
+    {
+      "url": "http://scanme.nmap.org/.htaccess.txt",
+      "status": 403,
+      "length": 295
+    },
+    {
+      "url": "http://scanme.nmap.org/.htpasswd.bak",
+      "status": 403,
+      "length": 295
+    },
+    {
+      "url": "http://scanme.nmap.org/.htpasswd",
+      "status": 403,
+      "length": 291
+    },
+    {
+      "url": "http://scanme.nmap.org/.htaccess.js",
+      "status": 403,
+      "length": 294
+    },
+    {
+      "url": "http://scanme.nmap.org/.htpasswd.txt",
+      "status": 403,
+      "length": 295
+    },
+    {
+      "url": "http://scanme.nmap.org/.htaccess.bak",
+      "status": 403,
+      "length": 295
+    },
+    {
+      "url": "http://scanme.nmap.org/.htaccess.html",
+      "status": 403,
+      "length": 296
+    },
+    {
+      "url": "http://scanme.nmap.org/.htpasswd.html",
+      "status": 403,
+      "length": 296
+    },
+    {
+      "url": "http://scanme.nmap.org/.htaccess",
+      "status": 403,
+      "length": 291
+    },
+    {
+      "url": "http://scanme.nmap.org/.hta.html",
+      "status": 403,
+      "length": 291
+    },
+    {
+      "url": "http://scanme.nmap.org/.htpasswd.js",
+      "status": 403,
+      "length": 294
+    },
+    {
+      "url": "http://scanme.nmap.org/.svn",
+      "status": 301,
+      "length": 316,
+      "redirect_location": "http://scanme.nmap.org/.svn/"
+    },
+    {
+      "url": "http://scanme.nmap.org/.svn/entries",
+      "status": 403,
+      "length": 294
+    },
+    {
+      "url": "http://scanme.nmap.org/.svn/entries.php",
+      "status": 403,
+      "length": 298
+    },
+    {
+      "url": "http://scanme.nmap.org/.svn/entries.js",
+      "status": 403,
+      "length": 297
+    },
+    {
+      "url": "http://scanme.nmap.org/.svn/entries.bak",
+      "status": 403,
+      "length": 298
+    },
+    {
+      "url": "http://scanme.nmap.org/.svn/entries.txt",
+      "status": 403,
+      "length": 298
+    },
+    {
+      "url": "http://scanme.nmap.org/.svn/entries.html",
+      "status": 403,
+      "length": 299
+    },
+    {
+      "url": "http://scanme.nmap.org/favicon.ico",
+      "status": 403,
+      "length": 293
+    },
+    {
+      "url": "http://scanme.nmap.org/images",
+      "status": 301,
+      "length": 318,
+      "redirect_location": "http://scanme.nmap.org/images/"
+    },
+    {
+      "url": "http://scanme.nmap.org/index.html",
+      "status": 200,
+      "length": 6974
+    },
+    {
+      "url": "http://scanme.nmap.org/index",
+      "status": 200,
+      "length": 6974
+    },
+    {
+      "url": "http://scanme.nmap.org/index.html",
+      "status": 200,
+      "length": 6974
+    },
+    {
+      "url": "http://scanme.nmap.org/shared",
+      "status": 301,
+      "length": 318,
+      "redirect_location": "http://scanme.nmap.org/shared/"
+    }
+  ],
+  "total": 31
+}
