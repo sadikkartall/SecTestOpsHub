@@ -1,9 +1,10 @@
 import os
+import re
 from urllib.parse import urlparse
 from fastapi import APIRouter, HTTPException, status
 
 from ..models.scan import ScanRequest, ScanPlan
-from ..services import ping, whois, nmap, nikto, gobuster, zap, testssl, dnsrecon, theharvester, amass
+from ..services import ping, whois, nmap, nikto, gobuster, zap, testssl, dnsrecon, theharvester, subfinder
 
 router = APIRouter(prefix="/scans", tags=["scans"])
 
@@ -11,12 +12,24 @@ router = APIRouter(prefix="/scans", tags=["scans"])
 @router.post("/", response_model=ScanPlan, status_code=status.HTTP_201_CREATED)
 async def create_scan_plan(payload: ScanRequest) -> ScanPlan:
     """
-    Tarama talebini alır, ilk adım olarak hedefe ping atar ve IP bilgisini dosyaya kaydeder.
-    Araçlar adım adım eklenecek; ping başlangıç doğrulama adımıdır.
+    Tarama planı oluşturur ve seçilen güvenlik araçlarını çalıştırır.
+    
+    Args:
+        payload: Tarama isteği (hedef URL ve araç listesi)
+        
+    Returns:
+        ScanPlan: Tüm araç sonuçlarını içeren tarama planı
+        
+    Raises:
+        HTTPException: Desteklenmeyen araç veya geçersiz hedef durumunda
     """
-    supported_tools = {"ping", "whois", "nmap", "nikto", "gobuster", "zap", "testssl", "dnsrecon", "theharvester", "amass"}
-    selected_tools = payload.tools or ["ping", "whois", "nmap", "nikto", "gobuster", "zap", "testssl", "dnsrecon", "theharvester", "amass"]
+    # Desteklenen araçlar listesi
+    supported_tools = {"ping", "whois", "nmap", "nikto", "gobuster", "zap", "testssl", "dnsrecon", "theharvester", "subfinder"}
+    
+    # Seçili araçlar (boş ise tümü seçili)
+    selected_tools = payload.tools or ["ping", "whois", "nmap", "nikto", "gobuster", "zap", "testssl", "dnsrecon", "theharvester", "subfinder"]
 
+    # Desteklenmeyen araçları kontrol et
     unsupported = [t for t in selected_tools if t not in supported_tools]
     if unsupported:
         raise HTTPException(
@@ -24,9 +37,11 @@ async def create_scan_plan(payload: ScanRequest) -> ScanPlan:
             detail=f"Desteklenmeyen araç(lar): {', '.join(unsupported)}",
         )
 
+    # Çıktı dizini (varsayılan: ortam değişkeni veya /app/data)
     output_dir = payload.output_dir or os.getenv("OUTPUT_DIR", "/app/data")
 
-    # Hedefi normalize et: şema yoksa http ekle, böylece urlparse ile host alınabilir
+    # Hedef URL'yi normalize et: şema yoksa http ekle
+    # Böylece urlparse ile host bilgisi çıkarılabilir
     raw_target = payload.target_url.strip()
     if not raw_target:
         raise HTTPException(
@@ -38,7 +53,7 @@ async def create_scan_plan(payload: ScanRequest) -> ScanPlan:
     if not raw_target.startswith(("http://", "https://")):
         normalized_target = f"http://{raw_target}"
 
-    # URL'den host bilgisini çıkar
+    # URL'den host, port, şema ve path bilgilerini çıkar
     parsed = urlparse(normalized_target)
     target_host = parsed.hostname
     if not target_host:
@@ -46,9 +61,17 @@ async def create_scan_plan(payload: ScanRequest) -> ScanPlan:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Geçerli bir hedef host çözümlenemedi.",
         )
+    
+    # Port bilgisi (varsayılan: HTTPS için 443, HTTP için 80)
     target_port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    
+    # SSL kullanımı (HTTPS şeması veya 443 portu)
     use_ssl = parsed.scheme == "https" or target_port == 443
+    
+    # Root path (varsayılan: /)
     root_path = parsed.path if parsed.path else "/"
+    
+    # Şema (varsayılan: http)
     scheme = parsed.scheme or "http"
 
     ping_result = None
@@ -60,7 +83,7 @@ async def create_scan_plan(payload: ScanRequest) -> ScanPlan:
     testssl_result = None
     dnsrecon_result = None
     theharvester_result = None
-    amass_result = None
+    subfinder_result = None
 
     if "ping" in selected_tools:
         try:
@@ -150,9 +173,16 @@ async def create_scan_plan(payload: ScanRequest) -> ScanPlan:
                 detail=str(exc),
             ) from exc
 
-    if "amass" in selected_tools:
+    if "subfinder" in selected_tools:
         try:
-            amass_result = amass.run_amass(target_host, output_dir)
+            # Subfinder domain bekler, IP adresi değil
+            # IP adresi kontrolü yap
+            ip_pattern = re.compile(r'^(\d{1,3}\.){3}\d{1,3}$')
+            if ip_pattern.match(target_host):
+                # IP adresi ise subfinder çalıştırma
+                raise RuntimeError(f"Subfinder domain bekler, IP adresi kabul etmez: {target_host}")
+            # Domain olarak kullan
+            subfinder_result = subfinder.run_subfinder(target_host, output_dir)
         except RuntimeError as exc:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -173,8 +203,8 @@ async def create_scan_plan(payload: ScanRequest) -> ScanPlan:
         testssl_result=testssl_result,
         dnsrecon_result=dnsrecon_result,
         theharvester_result=theharvester_result,
-        amass_result=amass_result,
-        note="Seçilen araçlar çalıştırıldı; diğer araçlar ilerleyen aşamalarda eklenecek.",
+        subfinder_result=subfinder_result,
+        note="Seçilen araçlar başarıyla çalıştırıldı.",
     )
 
 

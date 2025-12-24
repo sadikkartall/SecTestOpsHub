@@ -3,7 +3,7 @@ FROM python:3.12-slim
 # Ping, whois, nmap için paketler; Nikto, Gobuster ve testssl.sh manuel kurulum; seclists wordlist arşivi GitHub'dan indiriliyor
 ARG NIKTO_VERSION=2.5.0
 ARG GOBUSTER_VERSION=3.6.0
-ARG AMASS_VERSION=5.0.1
+ARG SUBFINDER_VERSION=2.8.0
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         iputils-ping \
@@ -31,6 +31,7 @@ RUN apt-get update \
     && ln -s /opt/nikto/program/nikto.pl /usr/local/bin/nikto \
     && chmod +x /usr/local/bin/nikto \
     && mkdir -p /usr/share/seclists/Discovery/Web-Content \
+    && mkdir -p /usr/share/seclists/Discovery/DNS \
     && curl -L --retry 5 --retry-delay 3 --fail \
         -o /usr/share/seclists/Discovery/Web-Content/common.txt \
         "https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/common.txt" \
@@ -41,6 +42,13 @@ RUN apt-get update \
             -o /usr/share/seclists/Discovery/Web-Content/directory-list-2.3-medium.txt \
             "https://cdn.jsdelivr.net/gh/danielmiessler/SecLists/Discovery/Web-Content/directory-list-2.3-medium.txt" \
         || cp /usr/share/seclists/Discovery/Web-Content/common.txt /usr/share/seclists/Discovery/Web-Content/directory-list-2.3-medium.txt ) \
+    && ( curl -L --retry 5 --retry-delay 3 --fail \
+            -o /usr/share/seclists/Discovery/DNS/subdomains-top1million-5000.txt \
+            "https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/DNS/subdomains-top1million-5000.txt" \
+        || curl -L --retry 5 --retry-delay 3 --fail \
+            -o /usr/share/seclists/Discovery/DNS/subdomains-top1million-5000.txt \
+            "https://cdn.jsdelivr.net/gh/danielmiessler/SecLists/Discovery/DNS/subdomains-top1million-5000.txt" \
+        || echo "" > /usr/share/seclists/Discovery/DNS/subdomains-top1million-5000.txt ) \
     && curl -L --retry 5 --retry-delay 3 --fail -o /tmp/gobuster.tar.gz "https://github.com/OJ/gobuster/releases/download/v${GOBUSTER_VERSION}/gobuster_Linux_x86_64.tar.gz" \
     && tar -xzf /tmp/gobuster.tar.gz -C /usr/local/bin gobuster \
     && chmod +x /usr/local/bin/gobuster \
@@ -51,10 +59,10 @@ RUN apt-get update \
     && (cd /opt/theHarvester && (test -f requirements.txt && pip install --no-cache-dir -r requirements.txt || pip install --no-cache-dir ujson requests dnspython netaddr lxml beautifulsoup4 python-dateutil aiohttp aiodns aiofiles aiomultiprocess aiosqlite censys certifi fastapi httpx retrying shodan slowapi uvicorn uvloop PyYAML playwright)) \
     && ln -s /opt/theHarvester/theHarvester.py /usr/local/bin/theHarvester \
     && chmod +x /usr/local/bin/theHarvester \
-    && curl -L --retry 5 --retry-delay 3 --fail -o /tmp/amass.tar.gz "https://github.com/owasp-amass/amass/releases/download/v${AMASS_VERSION}/amass_linux_amd64.tar.gz" \
-    && tar -xzf /tmp/amass.tar.gz -C /tmp \
-    && mv /tmp/amass_linux_amd64/amass /usr/local/bin/amass \
-    && chmod +x /usr/local/bin/amass \
+    && curl -L --retry 5 --retry-delay 3 --fail -o /tmp/subfinder.zip "https://github.com/projectdiscovery/subfinder/releases/download/v${SUBFINDER_VERSION}/subfinder_${SUBFINDER_VERSION}_linux_amd64.zip" \
+    && unzip -q /tmp/subfinder.zip -d /tmp \
+    && (mv /tmp/subfinder /usr/local/bin/subfinder 2>/dev/null || find /tmp -name "subfinder" -type f -exec mv {} /usr/local/bin/subfinder \; ) \
+    && chmod +x /usr/local/bin/subfinder \
     # Eğer docker CLI apt ile gelmezse statik binary indirip ekle
     && ( command -v docker >/dev/null 2>&1 \
         || ( curl -fsSL --retry 5 --retry-delay 3 --fail \
@@ -64,7 +72,7 @@ RUN apt-get update \
            && mv /tmp/docker/docker /usr/local/bin/docker \
            && chmod +x /usr/local/bin/docker ) ) \
     && rm -rf /tmp/docker.tgz /tmp/docker \
-    && rm -rf /tmp/nikto.tar.gz /tmp/gobuster.tar.gz /tmp/amass.tar.gz /tmp/amass_linux_amd64 \
+    && rm -rf /tmp/nikto.tar.gz /tmp/gobuster.tar.gz /tmp/subfinder.zip \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

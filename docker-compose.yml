@@ -19,6 +19,8 @@ services:
   frontend:
     build: ./frontend
     container_name: sectestops-frontend
+    volumes:
+      - ./frontend/web:/usr/share/nginx/html
     ports:
       - "8080:80"
     depends_on:
