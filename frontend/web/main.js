@@ -1,10 +1,53 @@
-// Basit API istemcisi; tüm yorumlar Türkçe tutulmuştur
+// Modern API istemcisi; tüm yorumlar Türkçe tutulmuştur
 
 const form = document.getElementById("scan-form");
 const resultEl = document.getElementById("result");
+const submitBtn = document.getElementById("submit-btn");
+const cancelBtn = document.getElementById("cancel-btn");
+const buttonText = submitBtn.querySelector(".button-text");
+const buttonLoader = submitBtn.querySelector(".button-loader");
 
 // Yardımcı: API kök adresi; gerekirse reverse proxy ile güncellenebilir
 const API_BASE = "http://localhost:8000";
+
+// AbortController for request cancellation
+let abortController = null;
+
+// Loading state yönetimi
+function setLoading(isLoading) {
+  if (isLoading) {
+    submitBtn.disabled = true;
+    buttonText.style.display = "none";
+    buttonLoader.style.display = "flex";
+    cancelBtn.style.display = "flex";
+    resultEl.innerHTML = `
+      <div class="loading-state">
+        <div class="loading-spinner"></div>
+        <p>[SYSTEM] Scanning in progress... Please wait...</p>
+      </div>
+    `;
+  } else {
+    submitBtn.disabled = false;
+    buttonText.style.display = "block";
+    buttonLoader.style.display = "none";
+    cancelBtn.style.display = "none";
+    abortController = null;
+  }
+}
+
+// Cancel button handler
+cancelBtn.addEventListener("click", () => {
+  if (abortController) {
+    abortController.abort();
+    setLoading(false);
+    resultEl.innerHTML = `
+      <div class="result-card warning">
+        <h3>[ABORTED] Scan Terminated</h3>
+        <p>[WARNING] Operation cancelled by user. Ready for new scan command.</p>
+      </div>
+    `;
+  }
+});
 
 // Form gönderimi ile tarama planı oluşturulur
 form.addEventListener("submit", async (event) => {
@@ -17,12 +60,20 @@ form.addEventListener("submit", async (event) => {
 
   // Basit doğrulama: URL var mı
   if (!targetUrl) {
-    resultEl.textContent = "Hedef URL zorunludur.";
+    resultEl.innerHTML = `
+      <div class="result-card error">
+        <h3>[ERROR] Invalid Input</h3>
+        <p>[REQUIRED] Target URL/IP/domain is required. Please provide a valid target.</p>
+      </div>
+    `;
     return;
   }
 
-  // Kullanıcıya durum bilgisi göster
-  resultEl.textContent = "Plan oluşturuluyor...";
+  // Loading state aktif
+  setLoading(true);
+  
+  // AbortController oluştur
+  abortController = new AbortController();
 
   try {
     const response = await fetch(`${API_BASE}/scans/`, {
@@ -32,25 +83,42 @@ form.addEventListener("submit", async (event) => {
         target_url: targetUrl,
         tools: tools.length ? tools : null,
       }),
+      signal: abortController.signal, // AbortController'ı bağla
     });
 
     if (!response.ok) {
       const error = await response.json();
-      resultEl.textContent = `Hata: ${error.detail || "Bilinmeyen hata"}`;
+      setLoading(false);
+      resultEl.innerHTML = `
+        <div class="result-card error">
+          <h3>[ERROR] Request Failed</h3>
+          <p><strong>[DETAIL]:</strong> ${error.detail || "Unknown error occurred"}</p>
+        </div>
+      `;
       return;
     }
 
     const data = await response.json();
+    setLoading(false);
 
     // Debug: Console'a yazdır
     console.log("Ping result:", data.ping_result);
     console.log("Normalized JSON:", data.ping_result?.normalized_json);
 
     // Sonuçları kullanıcıya okunaklı formatta göster
+    const statusClass = (status) => {
+      if (status === 'success') return 'success';
+      if (status === 'failed') return 'error';
+      return 'warning';
+    };
+
     resultEl.innerHTML = `
-      <p><strong>Hedef:</strong> ${data.target_url}</p>
-      <p><strong>Araçlar:</strong> ${data.tools.join(", ")}</p>
-      <p><strong>Çıktı Dizini:</strong> ${data.output_dir}</p>
+      <div class="result-card success">
+        <h3>[SCAN PLAN] Execution Ready</h3>
+        <p><strong>[TARGET]:</strong> <span style="color: var(--text-success);">${data.target_url}</span></p>
+        <p><strong>[TOOLS]:</strong> ${data.tools.join(", ")}</p>
+        <p><strong>[OUTPUT_DIR]:</strong> <code>${data.output_dir}</code></p>
+      </div>
       ${
         data.ping_result
           ? (() => {
@@ -66,28 +134,28 @@ form.addEventListener("submit", async (event) => {
               const rtt = metrics.rtt_ms || {};
               
               return `
-            <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 10px 0; border-left: 4px solid ${norm.status === 'success' ? '#28a745' : norm.status === 'failed' ? '#dc3545' : '#ffc107'}; color: #212529;">
-              <h3 style="margin-top: 0; color: #212529;">${norm.summary || 'Ping Sonuçları'}</h3>
-              <p style="color: #212529;"><strong>Durum:</strong> ${norm.status === 'success' ? '✅ Başarılı' : norm.status === 'failed' ? '❌ Başarısız' : '⚠️ Kısmi'}</p>
-              <p style="color: #212529;"><strong>Hedef:</strong> ${norm.target || ping.ip_address}</p>
-              ${metrics.resolved_ip ? `<p style="color: #212529;"><strong>IP Adresi:</strong> ${metrics.resolved_ip}</p>` : ''}
-              ${metrics.reachability ? `<p style="color: #212529;"><strong>Erişilebilirlik:</strong> ${metrics.reachability === 'reachable' ? '✅ Erişilebilir' : metrics.reachability === 'unreachable' ? '❌ Erişilemiyor' : '❓ Bilinmiyor'}</p>` : ''}
-              ${packets.sent ? `<p style="color: #212529;"><strong>Paketler:</strong> ${packets.sent} gönderildi, ${packets.received} alındı, ${packets.lost} kayıp (${packets.loss_percent || 0}%)</p>` : ''}
-              ${rtt.avg ? `<p style="color: #212529;"><strong>Gecikme (RTT):</strong> Ortalama: ${rtt.avg.toFixed(2)} ms, Min: ${rtt.min?.toFixed(2) || 'N/A'} ms, Max: ${rtt.max?.toFixed(2) || 'N/A'} ms</p>` : ''}
-              ${metrics.duration_ms ? `<p style="color: #212529;"><strong>Süre:</strong> ${metrics.duration_ms} ms</p>` : ''}
-              ${norm.findings && norm.findings.length > 0 ? `<p style="color: #212529;"><strong>Bulgular:</strong> ${norm.findings.map(f => f.title).join(', ')}</p>` : ''}
-              <details style="margin-top: 10px;">
-                <summary style="cursor: pointer; color: #0066cc;">Ham Çıktıyı Göster</summary>
-                <pre class="pre-block" style="margin-top: 10px; color: #212529;">${ping.raw_output || "Çıktı yok"}</pre>
+            <div class="result-card ${statusClass(norm.status)}">
+              <h3>📡 ${norm.summary || 'Ping Sonuçları'}</h3>
+              <p><strong>Durum:</strong> ${norm.status === 'success' ? '✅ Başarılı' : norm.status === 'failed' ? '❌ Başarısız' : '⚠️ Kısmi'}</p>
+              <p><strong>Hedef:</strong> ${norm.target || ping.ip_address}</p>
+              ${metrics.resolved_ip ? `<p><strong>IP Adresi:</strong> <code style="background: rgba(255,255,255,0.1); padding: 2px 6px; border-radius: 4px;">${metrics.resolved_ip}</code></p>` : ''}
+              ${metrics.reachability ? `<p><strong>Erişilebilirlik:</strong> ${metrics.reachability === 'reachable' ? '✅ Erişilebilir' : metrics.reachability === 'unreachable' ? '❌ Erişilemiyor' : '❓ Bilinmiyor'}</p>` : ''}
+              ${packets.sent ? `<p><strong>Paketler:</strong> ${packets.sent} gönderildi, ${packets.received} alındı, ${packets.lost} kayıp (${packets.loss_percent || 0}%)</p>` : ''}
+              ${rtt.avg ? `<p><strong>Gecikme (RTT):</strong> Ortalama: ${rtt.avg.toFixed(2)} ms, Min: ${rtt.min?.toFixed(2) || 'N/A'} ms, Max: ${rtt.max?.toFixed(2) || 'N/A'} ms</p>` : ''}
+              ${metrics.duration_ms ? `<p><strong>Süre:</strong> ${metrics.duration_ms} ms</p>` : ''}
+              ${norm.findings && norm.findings.length > 0 ? `<p><strong>Bulgular:</strong> ${norm.findings.map(f => f.title).join(', ')}</p>` : ''}
+              <details>
+                <summary>🔍 Ham Çıktıyı Göster</summary>
+                <pre class="pre-block">${ping.raw_output || "Çıktı yok"}</pre>
               </details>
-              <details style="margin-top: 10px;">
-                <summary style="cursor: pointer; color: #0066cc;">Normalize Edilmiş JSON</summary>
-                <pre class="pre-block" style="margin-top: 10px; color: #212529;">${JSON.stringify(norm, null, 2)}</pre>
+              <details>
+                <summary>📄 Normalize Edilmiş JSON</summary>
+                <pre class="pre-block">${JSON.stringify(norm, null, 2)}</pre>
               </details>
             </div>
           `;
             })()
-          : "<p>Ping sonucu bulunamadı.</p>"
+          : ""
       }
       ${
         data.whois_result
@@ -106,8 +174,8 @@ form.addEventListener("submit", async (event) => {
               const dates = metrics.dates || {};
               
               return `
-            <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 10px 0; border-left: 4px solid ${norm.status === 'success' ? '#28a745' : norm.status === 'failed' ? '#dc3545' : '#ffc107'}; color: #212529;">
-              <h3 style="margin-top: 0; color: #212529;">${norm.summary || 'Whois Sonuçları'}</h3>
+            <div class="result-card ${statusClass(norm.status)}">
+              <h3>📋 ${norm.summary || 'Whois Sonuçları'}</h3>
               <p style="color: #212529;"><strong>Durum:</strong> ${norm.status === 'success' ? '✅ Başarılı' : norm.status === 'failed' ? '❌ Başarısız' : '⚠️ Kısmi'}</p>
               <p style="color: #212529;"><strong>Hedef:</strong> ${norm.target || metrics.domain || 'N/A'}</p>
               ${metrics.domain ? `<p style="color: #212529;"><strong>Domain:</strong> ${metrics.domain}</p>` : ''}
@@ -125,17 +193,17 @@ form.addEventListener("submit", async (event) => {
               ${metrics.duration_ms ? `<p style="color: #212529;"><strong>Süre:</strong> ${metrics.duration_ms} ms</p>` : ''}
               ${norm.findings && norm.findings.length > 0 ? `<p style="color: #212529;"><strong>Bulgular:</strong> ${norm.findings.map(f => `${f.severity}: ${f.title}`).join(', ')}</p>` : ''}
               <details style="margin-top: 10px;">
-                <summary style="cursor: pointer; color: #0066cc;">Ham Çıktıyı Göster</summary>
+                <summary>[RAW OUTPUT]</summary>
                 <pre class="pre-block" style="margin-top: 10px; color: #212529;">${whois.raw_output || "Çıktı yok"}</pre>
               </details>
               <details style="margin-top: 10px;">
-                <summary style="cursor: pointer; color: #0066cc;">Normalize Edilmiş JSON</summary>
+                <summary>[NORMALIZED JSON]</summary>
                 <pre class="pre-block" style="margin-top: 10px; color: #212529;">${JSON.stringify(norm, null, 2)}</pre>
               </details>
             </div>
           `;
             })()
-          : "<p>Whois sonucu bulunamadı.</p>"
+          : ""
       }
       ${
         data.nmap_result
@@ -158,8 +226,8 @@ form.addEventListener("submit", async (event) => {
               const os = metrics.os || {};
               
               return `
-            <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 10px 0; border-left: 4px solid ${norm.status === 'success' ? '#28a745' : norm.status === 'failed' ? '#dc3545' : '#ffc107'}; color: #212529;">
-              <h3 style="margin-top: 0; color: #212529;">${norm.summary || 'Nmap Sonuçları'}</h3>
+            <div class="result-card ${statusClass(norm.status)}">
+              <h3>🔍 ${norm.summary || 'Nmap Sonuçları'}</h3>
               <p style="color: #212529;"><strong>Durum:</strong> ${norm.status === 'success' ? '✅ Başarılı' : norm.status === 'failed' ? '❌ Başarısız' : '⚠️ Kısmi'}</p>
               <p style="color: #212529;"><strong>Hedef:</strong> ${norm.target || 'N/A'}</p>
               <p style="color: #212529;"><strong>Host Durumu:</strong> ${metrics.host_status === 'up' ? '✅ Up' : metrics.host_status === 'down' ? '❌ Down' : '❓ Unknown'}</p>
@@ -192,17 +260,17 @@ form.addEventListener("submit", async (event) => {
               ` : ''}
               ${norm.findings && norm.findings.length > 0 ? `<p style="color: #212529; margin-top: 10px;"><strong>Bulgular:</strong> ${norm.findings.length} bulgu</p>` : ''}
               <details style="margin-top: 10px;">
-                <summary style="cursor: pointer; color: #0066cc;">Ham Çıktıyı Göster</summary>
+                <summary>[RAW OUTPUT]</summary>
                 <pre class="pre-block" style="margin-top: 10px; color: #212529;">${nmap.raw_output || "Çıktı yok"}</pre>
               </details>
               <details style="margin-top: 10px;">
-                <summary style="cursor: pointer; color: #0066cc;">Normalize Edilmiş JSON</summary>
+                <summary>[NORMALIZED JSON]</summary>
                 <pre class="pre-block" style="margin-top: 10px; color: #212529;">${JSON.stringify(norm, null, 2)}</pre>
               </details>
             </div>
           `;
             })()
-          : "<p>Nmap sonucu bulunamadı.</p>"
+          : ""
       }
       ${
         data.nikto_result
@@ -229,8 +297,8 @@ form.addEventListener("submit", async (event) => {
               const info_findings = findings.filter(f => f.severity === "INFO");
               
               return `
-            <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 10px 0; border-left: 4px solid ${norm.status === 'success' ? '#28a745' : norm.status === 'failed' ? '#dc3545' : '#ffc107'}; color: #212529;">
-              <h3 style="margin-top: 0; color: #212529;">${norm.summary || 'Nikto Sonuçları'}</h3>
+            <div class="result-card ${statusClass(norm.status)}">
+              <h3>🛡️ ${norm.summary || 'Nikto Sonuçları'}</h3>
               <p style="color: #212529;"><strong>Durum:</strong> ${norm.status === 'success' ? '✅ Başarılı' : norm.status === 'failed' ? '❌ Başarısız' : '⚠️ Kısmi'}</p>
               <p style="color: #212529;"><strong>Hedef:</strong> ${norm.target || 'N/A'}</p>
               ${metrics.target_ip ? `<p style="color: #212529;"><strong>IP Adresi:</strong> ${metrics.target_ip}</p>` : ''}
@@ -272,17 +340,17 @@ form.addEventListener("submit", async (event) => {
                 </ul>
               ` : ''}
               <details style="margin-top: 10px;">
-                <summary style="cursor: pointer; color: #0066cc;">Ham Çıktıyı Göster</summary>
+                <summary>[RAW OUTPUT]</summary>
                 <pre class="pre-block" style="margin-top: 10px; color: #212529;">${nikto.raw_output || "Çıktı yok"}</pre>
               </details>
               <details style="margin-top: 10px;">
-                <summary style="cursor: pointer; color: #0066cc;">Normalize Edilmiş JSON</summary>
+                <summary>[NORMALIZED JSON]</summary>
                 <pre class="pre-block" style="margin-top: 10px; color: #212529;">${JSON.stringify(norm, null, 2)}</pre>
               </details>
             </div>
           `;
             })()
-          : "<p>Nikto sonucu bulunamadı.</p>"
+          : ""
       }
       ${
         data.gobuster_result
@@ -336,8 +404,8 @@ form.addEventListener("submit", async (event) => {
               });
               
               return `
-            <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 10px 0; border-left: 4px solid ${norm.status === 'success' ? '#28a745' : norm.status === 'failed' ? '#dc3545' : '#ffc107'}; color: #212529;">
-              <h3 style="margin-top: 0; color: #212529;">${norm.summary || 'Gobuster Sonuçları'}</h3>
+            <div class="result-card ${statusClass(norm.status)}">
+              <h3>🔎 ${norm.summary || 'Gobuster Sonuçları'}</h3>
               <p style="color: #212529;"><strong>Durum:</strong> ${norm.status === 'success' ? '✅ Başarılı' : norm.status === 'failed' ? '❌ Başarısız' : '⚠️ Kısmi'}</p>
               <p style="color: #212529;"><strong>Hedef:</strong> ${norm.target || 'N/A'}</p>
               ${metrics.method ? `<p style="color: #212529;"><strong>Method:</strong> ${metrics.method}</p>` : ''}
@@ -423,17 +491,17 @@ form.addEventListener("submit", async (event) => {
                 </ul>
               ` : ''}
               <details style="margin-top: 10px;">
-                <summary style="cursor: pointer; color: #0066cc;">Ham Çıktıyı Göster</summary>
+                <summary>[RAW OUTPUT]</summary>
                 <pre class="pre-block" style="margin-top: 10px; color: #212529;">${gobuster.raw_output || "Çıktı yok"}</pre>
               </details>
               <details style="margin-top: 10px;">
-                <summary style="cursor: pointer; color: #0066cc;">Normalize Edilmiş JSON</summary>
+                <summary>[NORMALIZED JSON]</summary>
                 <pre class="pre-block" style="margin-top: 10px; color: #212529;">${JSON.stringify(norm, null, 2)}</pre>
               </details>
             </div>
           `;
             })()
-          : "<p>Gobuster sonucu bulunamadı.</p>"
+          : ""
       }
       ${
         data.zap_result
@@ -460,8 +528,8 @@ form.addEventListener("submit", async (event) => {
               const info_findings = findings.filter(f => f.severity === "INFO");
               
               return `
-            <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 10px 0; border-left: 4px solid ${norm.status === 'success' ? '#28a745' : norm.status === 'failed' ? '#dc3545' : '#ffc107'}; color: #212529;">
-              <h3 style="margin-top: 0; color: #212529;">${norm.summary || 'ZAP Sonuçları'}</h3>
+            <div class="result-card ${statusClass(norm.status)}">
+              <h3>⚡ ${norm.summary || 'ZAP Sonuçları'}</h3>
               <p style="color: #212529;"><strong>Durum:</strong> ${norm.status === 'success' ? '✅ Başarılı' : norm.status === 'failed' ? '❌ Başarısız' : '⚠️ Kısmi'}</p>
               <p style="color: #212529;"><strong>Hedef:</strong> ${norm.target || 'N/A'}</p>
               ${metrics.zap_version ? `<p style="color: #212529;"><strong>ZAP Versiyonu:</strong> ${metrics.zap_version}</p>` : ''}
@@ -552,17 +620,17 @@ form.addEventListener("submit", async (event) => {
                 </ul>
               ` : ''}
               <details style="margin-top: 10px;">
-                <summary style="cursor: pointer; color: #0066cc;">Ham Çıktıyı Göster</summary>
+                <summary>[RAW OUTPUT]</summary>
                 <pre class="pre-block" style="margin-top: 10px; color: #212529;">${zap.raw_output || "Çıktı yok"}</pre>
               </details>
               <details style="margin-top: 10px;">
-                <summary style="cursor: pointer; color: #0066cc;">Normalize Edilmiş JSON</summary>
+                <summary>[NORMALIZED JSON]</summary>
                 <pre class="pre-block" style="margin-top: 10px; color: #212529;">${JSON.stringify(norm, null, 2)}</pre>
               </details>
             </div>
           `;
             })()
-          : "<p>ZAP sonucu bulunamadı.</p>"
+          : ""
       }
       ${
         data.testssl_result
@@ -592,8 +660,8 @@ form.addEventListener("submit", async (event) => {
               const medium_findings = findings.filter(f => f.severity === "MEDIUM");
               
               return `
-            <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 10px 0; border-left: 4px solid ${norm.status === 'success' ? '#28a745' : norm.status === 'failed' ? '#dc3545' : '#ffc107'}; color: #212529;">
-              <h3 style="margin-top: 0; color: #212529;">${norm.summary || 'testssl.sh Sonuçları'}</h3>
+            <div class="result-card ${statusClass(norm.status)}">
+              <h3>🔒 ${norm.summary || 'testssl.sh Sonuçları'}</h3>
               <p style="color: #212529;"><strong>Durum:</strong> ${norm.status === 'success' ? '✅ Başarılı' : norm.status === 'failed' ? '❌ Başarısız' : '⚠️ Kısmi'}</p>
               <p style="color: #212529;"><strong>Hedef:</strong> ${norm.target || 'N/A'}</p>
               ${metrics.hostname ? `<p style="color: #212529;"><strong>Hostname:</strong> ${metrics.hostname}</p>` : ''}
@@ -672,17 +740,17 @@ form.addEventListener("submit", async (event) => {
                 </ul>
               ` : ''}
               <details style="margin-top: 10px;">
-                <summary style="cursor: pointer; color: #0066cc;">Ham Çıktıyı Göster</summary>
+                <summary>[RAW OUTPUT]</summary>
                 <pre class="pre-block" style="margin-top: 10px; color: #212529;">${testssl.raw_output || "Çıktı yok"}</pre>
               </details>
               <details style="margin-top: 10px;">
-                <summary style="cursor: pointer; color: #0066cc;">Normalize Edilmiş JSON</summary>
+                <summary>[NORMALIZED JSON]</summary>
                 <pre class="pre-block" style="margin-top: 10px; color: #212529;">${JSON.stringify(norm, null, 2)}</pre>
               </details>
             </div>
           `;
             })()
-          : "<p>testssl.sh sonucu bulunamadı.</p>"
+          : ""
       }
       ${
         data.dnsrecon_result
@@ -711,8 +779,8 @@ form.addEventListener("submit", async (event) => {
               const low_findings = findings.filter(f => f.severity === "LOW");
               
               return `
-            <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 10px 0; border-left: 4px solid ${norm.status === 'success' ? '#28a745' : norm.status === 'failed' ? '#dc3545' : '#ffc107'}; color: #212529;">
-              <h3 style="margin-top: 0; color: #212529;">${norm.summary || 'dnsrecon Sonuçları'}</h3>
+            <div class="result-card ${statusClass(norm.status)}">
+              <h3>🌐 ${norm.summary || 'dnsrecon Sonuçları'}</h3>
               <p style="color: #212529;"><strong>Durum:</strong> ${norm.status === 'success' ? '✅ Başarılı' : norm.status === 'failed' ? '❌ Başarısız' : '⚠️ Kısmi'}</p>
               <p style="color: #212529;"><strong>Hedef:</strong> ${norm.target || 'N/A'}</p>
               ${metrics.duration_ms ? `<p style="color: #212529;"><strong>Süre:</strong> ${(metrics.duration_ms / 1000).toFixed(2)} saniye</p>` : ''}
@@ -776,17 +844,17 @@ form.addEventListener("submit", async (event) => {
                 </ul>
               ` : ''}
               <details style="margin-top: 10px;">
-                <summary style="cursor: pointer; color: #0066cc;">Ham Çıktıyı Göster</summary>
+                <summary>[RAW OUTPUT]</summary>
                 <pre class="pre-block" style="margin-top: 10px; color: #212529;">${dnsrecon.raw_output || "Çıktı yok"}</pre>
               </details>
               <details style="margin-top: 10px;">
-                <summary style="cursor: pointer; color: #0066cc;">Normalize Edilmiş JSON</summary>
+                <summary>[NORMALIZED JSON]</summary>
                 <pre class="pre-block" style="margin-top: 10px; color: #212529;">${JSON.stringify(norm, null, 2)}</pre>
               </details>
             </div>
           `;
             })()
-          : "<p>dnsrecon sonucu bulunamadı.</p>"
+          : ""
       }
       ${
         data.theharvester_result
@@ -818,8 +886,8 @@ form.addEventListener("submit", async (event) => {
               const urls = results.urls || [];
               
               return `
-            <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 10px 0; border-left: 4px solid ${norm.status === 'success' ? '#28a745' : norm.status === 'failed' ? '#dc3545' : '#ffc107'}; color: #212529;">
-              <h3 style="margin-top: 0; color: #212529;">${norm.summary || 'theHarvester Sonuçları'}</h3>
+            <div class="result-card ${statusClass(norm.status)}">
+              <h3>🔍 ${norm.summary || 'theHarvester Sonuçları'}</h3>
               <p style="color: #212529;"><strong>Durum:</strong> ${norm.status === 'success' ? '✅ Başarılı' : norm.status === 'failed' ? '❌ Başarısız' : '⚠️ Kısmi'}</p>
               <p style="color: #212529;"><strong>Hedef:</strong> ${norm.target || 'N/A'}</p>
               ${metrics.duration_ms ? `<p style="color: #212529;"><strong>Süre:</strong> ${(metrics.duration_ms / 1000).toFixed(2)} saniye</p>` : ''}
@@ -905,17 +973,17 @@ form.addEventListener("submit", async (event) => {
                 </ul>
               ` : ''}
               <details style="margin-top: 10px;">
-                <summary style="cursor: pointer; color: #0066cc;">Ham Çıktıyı Göster</summary>
+                <summary>[RAW OUTPUT]</summary>
                 <pre class="pre-block" style="margin-top: 10px; color: #212529;">${theharvester.raw_output || "Çıktı yok"}</pre>
               </details>
               <details style="margin-top: 10px;">
-                <summary style="cursor: pointer; color: #0066cc;">Normalize Edilmiş JSON</summary>
+                <summary>[NORMALIZED JSON]</summary>
                 <pre class="pre-block" style="margin-top: 10px; color: #212529;">${JSON.stringify(norm, null, 2)}</pre>
               </details>
             </div>
           `;
             })()
-          : "<p>theHarvester sonucu bulunamadı.</p>"
+          : ""
       }
       ${
         data.subfinder_result
@@ -938,8 +1006,8 @@ form.addEventListener("submit", async (event) => {
               const findings = norm.findings || [];
               
               return `
-            <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 10px 0; border-left: 4px solid ${norm.status === 'success' ? '#28a745' : norm.status === 'failed' ? '#dc3545' : '#ffc107'}; color: #212529;">
-              <h3 style="margin-top: 0; color: #212529;">${norm.summary || 'Subfinder Sonuçları'}</h3>
+            <div class="result-card ${statusClass(norm.status)}">
+              <h3>🔎 ${norm.summary || 'Subfinder Sonuçları'}</h3>
               <p style="color: #212529;"><strong>Durum:</strong> ${norm.status === 'success' ? '✅ Başarılı' : norm.status === 'failed' ? '❌ Başarısız' : '⚠️ Kısmi'}</p>
               <p style="color: #212529;"><strong>Hedef:</strong> ${norm.target || 'N/A'}</p>
               ${metrics.duration_ms ? `<p style="color: #212529;"><strong>Süre:</strong> ${(metrics.duration_ms / 1000).toFixed(2)} saniye</p>` : ''}
@@ -957,23 +1025,51 @@ form.addEventListener("submit", async (event) => {
                 </ul>
               ` : ''}
               <details style="margin-top: 10px;">
-                <summary style="cursor: pointer; color: #0066cc;">Ham Çıktıyı Göster</summary>
+                <summary>[RAW OUTPUT]</summary>
                 <pre class="pre-block" style="margin-top: 10px; color: #212529;">${subfinder.raw_output || "Çıktı yok"}</pre>
               </details>
               <details style="margin-top: 10px;">
-                <summary style="cursor: pointer; color: #0066cc;">Normalize Edilmiş JSON</summary>
+                <summary>[NORMALIZED JSON]</summary>
                 <pre class="pre-block" style="margin-top: 10px; color: #212529;">${JSON.stringify(norm, null, 2)}</pre>
               </details>
             </div>
           `;
             })()
-          : "<p>Subfinder sonucu bulunamadı.</p>"
+          : ""
       }
-      <p><strong>Not:</strong> ${data.note}</p>
+      ${data.note ? `<div class="result-card" style="margin-top: 1rem;"><p><strong>📝 Not:</strong> ${data.note}</p></div>` : ''}
     `;
   } catch (error) {
     console.error(error);
-    resultEl.textContent = "İstek sırasında beklenmeyen bir hata oluştu.";
+    setLoading(false);
+    
+    // AbortError kontrolü - kullanıcı iptal ettiyse özel mesaj göster
+    if (error.name === 'AbortError') {
+      resultEl.innerHTML = `
+        <div class="result-card warning">
+          <h3>⚠️ Tarama İptal Edildi</h3>
+          <p>Tarama kullanıcı tarafından iptal edildi. Yeni bir tarama başlatabilirsiniz.</p>
+        </div>
+      `;
+      return;
+    }
+    
+    // Diğer hatalar için genel hata mesajı
+    resultEl.innerHTML = `
+      <div class="result-card error">
+        <h3>[ERROR] System Failure</h3>
+        <p><strong>[ERROR]:</strong> Unexpected error occurred during request processing.</p>
+        <p style="margin-top: 0.5rem; font-size: 0.9rem; color: var(--text-muted);">${error.message || 'Unknown error'}</p>
+      </div>
+    `;
+  }
+});
+
+// Sayfa yüklendiğinde input'a odaklan
+window.addEventListener('load', () => {
+  const input = document.getElementById("target-url");
+  if (input) {
+    setTimeout(() => input.focus(), 100);
   }
 });
 

@@ -3,57 +3,155 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SecTestOpsHub Panel</title>
+    <title>SecTestOpsHub - Güvenlik Test Platformu</title>
     <link
       rel="icon"
       href="data:image/svg+xml,<svg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27><rect width=%27100%27 height=%27100%27 rx=%2718%27 fill=%27%23111a2f%27/><text x=%2726%27 y=%2761%27 font-size=%2746%27 fill=%27%235f9bff%27 font-family=%27Arial%27>SH</text></svg>"
     />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=Share+Tech+Mono&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <!-- Basit bir başlık ve açıklama -->
-    <header>
-      <h1>SecTestOpsHub</h1>
-      <p>Güvenlik araçlarını adım adım ekleyip orkestre eden panel</p>
+    <div class="background-gradient"></div>
+    
+    <!-- Modern Header -->
+    <header class="header">
+      <div class="header-content">
+        <div class="logo-section">
+          <div class="logo-icon">[&gt;]</div>
+          <div>
+            <h1>SecTestOpsHub</h1>
+            <p class="header-subtitle">[SYSTEM] Security Testing Terminal v2.0</p>
+          </div>
+        </div>
+        <div class="header-badge">
+          <span class="badge-dot"></span>
+          <span>[ONLINE]</span>
+        </div>
+      </div>
     </header>
 
-    <!-- Form alanı -->
-    <section class="card">
-      <h2>Tarama Oluştur</h2>
-      <form id="scan-form">
-        <label for="target-url">Hedef URL</label>
-        <input
-          type="text"
-          id="target-url"
-          name="target-url"
-          placeholder="ör. instagram.com veya 45.33.32.156"
-          required
-        />
+    <!-- Main Content -->
+    <main class="main-content">
+      <!-- Scan Form Card -->
+      <section class="card scan-card">
+        <div class="card-header">
+          <h2>
+            <span class="icon">⚡</span>
+            Tarama Oluştur
+          </h2>
+          <p class="card-description">Hedef URL'yi girin ve güvenlik araçlarınızı seçin</p>
+        </div>
+        
+        <form id="scan-form" class="scan-form">
+          <div class="form-group">
+            <label for="target-url" class="form-label">
+              <span class="label-icon">[&gt;]</span>
+              Target URL / IP / Domain
+            </label>
+            <div class="input-wrapper">
+              <input
+                type="text"
+                id="target-url"
+                name="target-url"
+                class="form-input"
+                placeholder="örn. example.com, 192.168.1.1 veya https://example.com"
+                required
+                autocomplete="off"
+              />
+            </div>
+          </div>
 
-        <fieldset class="tool-grid">
-          <legend>Araç Seçimi (opsiyonel)</legend>
-          <label><input type="checkbox" name="tool" value="ping" checked /> Ping</label>
-          <label><input type="checkbox" name="tool" value="whois" checked /> Whois</label>
-          <label><input type="checkbox" name="tool" value="nmap" checked /> Nmap</label>
-          <label><input type="checkbox" name="tool" value="nikto" checked /> Nikto</label>
-          <label><input type="checkbox" name="tool" value="gobuster" checked /> Gobuster</label>
-          <label><input type="checkbox" name="tool" value="zap" checked /> ZAP</label>
-          <label><input type="checkbox" name="tool" value="testssl" checked /> testssl.sh</label>
-          <label><input type="checkbox" name="tool" value="dnsrecon" checked /> dnsrecon</label>
-          <label><input type="checkbox" name="tool" value="theharvester" checked /> theHarvester</label>
-          <label><input type="checkbox" name="tool" value="subfinder" checked /> Subfinder</label>
-        </fieldset>
+          <div class="form-group">
+            <fieldset class="tool-selection">
+              <legend class="tool-legend">
+                <span class="legend-icon">[&gt;]</span>
+                Security Tools
+              </legend>
+              <div class="tool-grid">
+                <label class="tool-checkbox">
+                  <input type="checkbox" name="tool" value="ping" checked />
+                  <span class="checkbox-custom"></span>
+                  <span class="tool-name">Ping</span>
+                </label>
+                <label class="tool-checkbox">
+                  <input type="checkbox" name="tool" value="whois" checked />
+                  <span class="checkbox-custom"></span>
+                  <span class="tool-name">Whois</span>
+                </label>
+                <label class="tool-checkbox">
+                  <input type="checkbox" name="tool" value="nmap" checked />
+                  <span class="checkbox-custom"></span>
+                  <span class="tool-name">Nmap</span>
+                </label>
+                <label class="tool-checkbox">
+                  <input type="checkbox" name="tool" value="nikto" checked />
+                  <span class="checkbox-custom"></span>
+                  <span class="tool-name">Nikto</span>
+                </label>
+                <label class="tool-checkbox">
+                  <input type="checkbox" name="tool" value="gobuster" checked />
+                  <span class="checkbox-custom"></span>
+                  <span class="tool-name">Gobuster</span>
+                </label>
+                <label class="tool-checkbox">
+                  <input type="checkbox" name="tool" value="zap" checked />
+                  <span class="checkbox-custom"></span>
+                  <span class="tool-name">OWASP ZAP</span>
+                </label>
+                <label class="tool-checkbox">
+                  <input type="checkbox" name="tool" value="testssl" checked />
+                  <span class="checkbox-custom"></span>
+                  <span class="tool-name">testssl.sh</span>
+                </label>
+                <label class="tool-checkbox">
+                  <input type="checkbox" name="tool" value="dnsrecon" checked />
+                  <span class="checkbox-custom"></span>
+                  <span class="tool-name">dnsrecon</span>
+                </label>
+                <label class="tool-checkbox">
+                  <input type="checkbox" name="tool" value="theharvester" checked />
+                  <span class="checkbox-custom"></span>
+                  <span class="tool-name">theHarvester</span>
+                </label>
+                <label class="tool-checkbox">
+                  <input type="checkbox" name="tool" value="subfinder" checked />
+                  <span class="checkbox-custom"></span>
+                  <span class="tool-name">Subfinder</span>
+                </label>
+              </div>
+            </fieldset>
+          </div>
 
-        <button type="submit">Planı Oluştur</button>
-      </form>
-      <p class="hint">
-        Not: URL şeması (http/https) eklemeseniz de otomatik tamamlanır. Araçları seçerek yalnızca istediğiniz taramayı çalıştırabilirsiniz.
-      </p>
-      <div id="result" class="result"></div>
-    </section>
+          <div class="button-group">
+            <button type="submit" class="submit-button" id="submit-btn">
+              <span class="button-text">[EXECUTE] Start Scan</span>
+              <span class="button-loader" style="display: none;">
+                <span class="spinner"></span>
+              </span>
+            </button>
+            <button type="button" class="cancel-button" id="cancel-btn" style="display: none;">
+              <span class="button-text">[ABORT] Stop Scan</span>
+            </button>
+          </div>
+        </form>
+
+        <div class="form-hint">
+          <span class="hint-icon">[INFO]</span>
+          <span>[NOTE] URL scheme (http/https) is auto-completed. Full security analysis available when all tools selected.</span>
+        </div>
+
+        <!-- Results Container -->
+        <div id="result" class="result-container"></div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <p>[SYSTEM] SecTestOpsHub Terminal v2.0 - Security Testing Platform [ONLINE]</p>
+    </footer>
 
     <script src="./main.js"></script>
   </body>
 </html>
-
-
