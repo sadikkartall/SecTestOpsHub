@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="tr">
+<html lang="tr" id="html-lang">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SecTestOpsHub - Güvenlik Test Platformu</title>
+    <title>SecTestOpsHub - Security Testing Platform</title>
     <link
       rel="icon"
       href="data:image/svg+xml,<svg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27><rect width=%27100%27 height=%27100%27 rx=%2718%27 fill=%27%23111a2f%27/><text x=%2726%27 y=%2761%27 font-size=%2746%27 fill=%27%235f9bff%27 font-family=%27Arial%27>SH</text></svg>"
@@ -22,13 +22,22 @@
         <div class="logo-section">
           <div class="logo-icon">[&gt;]</div>
           <div>
-            <h1>SecTestOpsHub</h1>
-            <p class="header-subtitle">[SYSTEM] Security Testing Terminal v2.0</p>
+            <h1 id="header-title">SecTestOpsHub</h1>
+            <p class="header-subtitle" id="header-subtitle">[SYSTEM] Security Testing Terminal v2.0</p>
           </div>
         </div>
-        <div class="header-badge">
-          <span class="badge-dot"></span>
-          <span>[ONLINE]</span>
+        <div class="header-right">
+          <div class="language-selector">
+            <span class="lang-label" id="lang-label">[LANG]</span>
+            <select id="lang-select" class="lang-select">
+              <option value="tr">TR</option>
+              <option value="en">EN</option>
+            </select>
+          </div>
+          <div class="header-badge">
+            <span class="badge-dot"></span>
+            <span id="header-status">[ONLINE]</span>
+          </div>
         </div>
       </div>
     </header>
@@ -39,17 +48,17 @@
       <section class="card scan-card">
         <div class="card-header">
           <h2>
-            <span class="icon">⚡</span>
-            Tarama Oluştur
+            <span class="icon">[&gt;]</span>
+            <span id="scan-title">Initialize Scan</span>
           </h2>
-          <p class="card-description">Hedef URL'yi girin ve güvenlik araçlarınızı seçin</p>
+          <p class="card-description" id="scan-description">[INPUT] Enter target URL and select security tools</p>
         </div>
         
         <form id="scan-form" class="scan-form">
           <div class="form-group">
             <label for="target-url" class="form-label">
               <span class="label-icon">[&gt;]</span>
-              Target URL / IP / Domain
+              <span id="target-label">Target URL / IP / Domain</span>
             </label>
             <div class="input-wrapper">
               <input
@@ -57,7 +66,7 @@
                 id="target-url"
                 name="target-url"
                 class="form-input"
-                placeholder="örn. example.com, 192.168.1.1 veya https://example.com"
+                placeholder="e.g. example.com, 192.168.1.1 or https://example.com"
                 required
                 autocomplete="off"
               />
@@ -68,7 +77,7 @@
             <fieldset class="tool-selection">
               <legend class="tool-legend">
                 <span class="legend-icon">[&gt;]</span>
-                Security Tools
+                <span id="tools-label">Security Tools</span>
               </legend>
               <div class="tool-grid">
                 <label class="tool-checkbox">
@@ -127,20 +136,20 @@
 
           <div class="button-group">
             <button type="submit" class="submit-button" id="submit-btn">
-              <span class="button-text">[EXECUTE] Start Scan</span>
+              <span class="button-text" id="btn-start-scan">[EXECUTE] Start Scan</span>
               <span class="button-loader" style="display: none;">
                 <span class="spinner"></span>
               </span>
             </button>
             <button type="button" class="cancel-button" id="cancel-btn" style="display: none;">
-              <span class="button-text">[ABORT] Stop Scan</span>
+              <span class="button-text" id="btn-stop-scan">[ABORT] Stop Scan</span>
             </button>
           </div>
         </form>
 
         <div class="form-hint">
           <span class="hint-icon">[INFO]</span>
-          <span>[NOTE] URL scheme (http/https) is auto-completed. Full security analysis available when all tools selected.</span>
+          <span id="form-hint">[NOTE] URL scheme (http/https) is auto-completed. Full security analysis available when all tools selected.</span>
         </div>
 
         <!-- Results Container -->
@@ -149,9 +158,11 @@
     </main>
 
     <footer class="footer">
-      <p>[SYSTEM] SecTestOpsHub Terminal v2.0 - Security Testing Platform [ONLINE]</p>
+      <p id="footer-text">[SYSTEM] SecTestOpsHub Terminal v2.0 - Security Testing Platform [ONLINE]</p>
     </footer>
 
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="./lang.js"></script>
     <script src="./main.js"></script>
   </body>
 </html>
