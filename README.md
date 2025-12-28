@@ -23,9 +23,11 @@ SecTestOpsHub, bilgi güvenliği tarama araçlarını tek bir Docker tabanlı pl
 ## ✨ Özellikler
 
 - ✅ **10 Entegre Güvenlik Aracı**: Ping, Whois, Nmap, Nikto, Gobuster, OWASP ZAP, testssl.sh, dnsrecon, theHarvester, Subfinder
+- ✅ **AI Destekli Güvenlik Analizi**: Gemini AI ile otomatik güvenlik analizi ve öneriler
 - ✅ **Tek Panelden Yönetim**: Web tabanlı arayüz ile tüm araçları tek yerden kontrol
 - ✅ **Standart Çıktı Formatları**: JSON, XML, TXT, HTML formatlarında tutarlı çıktılar
 - ✅ **Normalizasyon Sistemi**: Tüm araç çıktıları standart `NormalizedResult` formatına dönüştürülür
+- ✅ **Türkçe Çıktılar**: ZAP sonuçları ve AI analizleri Türkçe olarak sunulur
 - ✅ **Docker Tabanlı**: Tekrarlanabilir ve taşınabilir altyapı
 - ✅ **RESTful API**: Programatik erişim ve otomasyon desteği
 - ✅ **Modüler Mimari**: Kolay genişletilebilir servis yapısı
@@ -143,6 +145,21 @@ Tüm araç çıktıları standart `NormalizedResult` formatına dönüştürül�
 
 **Schema**: `backend/src/models/normalized.py`
 
+#### 5. AI Destekli Güvenlik Analizi
+Gemini AI entegrasyonu ile otomatik güvenlik analizi yapılır:
+- **Otomatik Analiz**: Tüm tarama sonuçları otomatik olarak analiz edilir
+- **Risk Seviyesi Değerlendirmesi**: Her araç için risk seviyesi belirlenir (critical, high, medium, low, safe)
+- **Detaylı Öneriler**: Her bulgu için pratik çözüm önerileri sunulur
+- **Tool Bazlı Analiz**: Her araç için özel analiz ve özet
+- **Genel Güvenlik Raporu**: Tüm araçların birleşik analizi ve korelasyonları
+- **Kısa ve Profesyonel**: Öz ve net analiz formatı
+
+**Servis**: `backend/src/services/analyze_results.py`
+
+**Gereksinimler**:
+- Gemini API Key (`.env` dosyasında `GEMINI_API_KEY` olarak tanımlanmalı)
+- API Key almak için: https://makersuite.google.com/app/apikey
+
 **NormalizedResult Yapısı**:
 ```python
 {
@@ -208,7 +225,7 @@ Her araç için `normalize_<tool>()` fonksiyonu mevcuttur:
 5. Normalize edilmiş JSON dosyaya kaydedilir (`<tool>-<uuid>-normalized.json`)
 6. Frontend normalize edilmiş JSON'u kullanarak sonuçları gösterir
 
-#### 5. Container Yapısı
+#### 6. Container Yapısı
 - **Backend Container**: Python 3.12-slim base image
   - NET_RAW, NET_ADMIN capabilities (Nmap için)
   - Docker socket mount (ZAP kontrolü için)
@@ -676,7 +693,8 @@ SecTestOpsHub/
 │           ├── testssl.py           # testssl.sh servisi
 │           ├── dnsrecon.py          # dnsrecon servisi
 │           ├── theharvester.py      # theHarvester servisi
-│           └── subfinder.py         # Subfinder servisi
+│           ├── subfinder.py         # Subfinder servisi
+│           └── analyze_results.py   # Gemini AI güvenlik analizi servisi
 │   └── tests/                        # Test dosyaları (şu an boş)
 │       └── __init__.py
 │
@@ -731,19 +749,28 @@ git clone https://github.com/sadikkartall/SecTestOpsHub.git
 cd SecTestOpsHub
 ```
 
-2. **Ortam değişkeni dosyasını oluşturun (opsiyonel):**
+2. **Ortam değişkeni dosyasını oluşturun:**
 ```bash
 cp env.example .env
 ```
 
-3. **Servisleri başlatın:**
+3. **Gemini API Key'i ekleyin (AI analizi için):**
+```bash
+# .env dosyasını düzenleyin ve GEMINI_API_KEY değerini ekleyin
+# API Key almak için: https://makersuite.google.com/app/apikey
+GEMINI_API_KEY=your_gemini_api_key_here
+```
+
+**Not**: AI analizi olmadan da sistem çalışır, ancak güvenlik analizi özelliği devre dışı kalır.
+
+4. **Servisleri başlatın:**
 ```bash
 docker compose up --build
 ```
 
-4. **Servislerin hazır olmasını bekleyin (30-60 saniye)**
+5. **Servislerin hazır olmasını bekleyin (30-60 saniye)**
 
-5. **Tarayıcıda açın:**
+6. **Tarayıcıda açın:**
 - **Web Paneli**: http://localhost:8080
 - **API Dokümantasyonu**: http://localhost:8000/docs
 - **Health Check**: http://localhost:8000/health
@@ -825,6 +852,8 @@ python -m http.server 8080
 - `httpx==0.27.2`: HTTP client
 - `beautifulsoup4==4.12.3`: HTML parsing (ZAP için)
 - `lxml==5.1.0`: XML parsing (Nmap için)
+- `google-generativeai==0.8.3`: Gemini AI entegrasyonu
+- `python-dotenv==1.0.0`: Ortam değişkenleri yönetimi
 
 ### Frontend Teknolojileri
 

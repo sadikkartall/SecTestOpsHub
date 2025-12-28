@@ -2,10 +2,13 @@ services:
   backend:
     build: ./backend
     container_name: sectestops-backend
+    env_file:
+      - .env
     environment:
       - APP_HOST=${APP_HOST:-0.0.0.0}
       - APP_PORT=${APP_PORT:-8000}
       - OUTPUT_DIR=${OUTPUT_DIR:-/app/data}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
     cap_add:
       - NET_RAW
       - NET_ADMIN

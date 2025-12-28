@@ -123,6 +123,39 @@ form.addEventListener("submit", async (event) => {
   abortController = new AbortController();
 
   try {
+    // Önce backend'in çalışıp çalışmadığını kontrol et
+    try {
+      const healthCheck = await fetch(`${API_BASE}/health`, {
+        method: "GET",
+        signal: abortController.signal,
+      });
+      if (!healthCheck.ok) {
+        throw new Error('Backend health check başarısız');
+      }
+    } catch (healthError) {
+      setLoading(false);
+      resultEl.innerHTML = `
+        <div class="result-card error">
+          <h3>❌ Backend Bağlantı Hatası</h3>
+          <p><strong>[ERROR]:</strong> Backend'e bağlanılamadı.</p>
+          <p style="margin-top: 0.5rem; font-size: 0.9rem; color: var(--text-muted);">
+            Backend'in çalıştığından emin olun: <code>http://localhost:8000</code>
+          </p>
+          <p style="margin-top: 0.5rem; font-size: 0.85rem; color: var(--text-muted);">
+            <strong>Backend'i başlatmak için:</strong><br>
+            <code style="background: rgba(0,0,0,0.1); padding: 4px 8px; border-radius: 4px; display: inline-block; margin-top: 4px;">
+              cd backend<br>
+              uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
+            </code>
+          </p>
+          <p style="margin-top: 0.5rem; font-size: 0.85rem;">
+            <a href="${API_BASE}/health" target="_blank" style="color: #667eea;">Backend Health Check'i test et →</a>
+          </p>
+        </div>
+      `;
+      return;
+    }
+    
     const response = await fetch(`${API_BASE}/scans/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -134,15 +167,21 @@ form.addEventListener("submit", async (event) => {
     });
 
     if (!response.ok) {
-      const error = await response.json();
+      let errorDetail = 'Unknown error occurred';
+      try {
+        const error = await response.json();
+        errorDetail = error.detail || errorDetail;
+      } catch (e) {
+        errorDetail = `HTTP ${response.status}: ${response.statusText}`;
+      }
+      
       setLoading(false);
       const errorTitle = typeof t !== 'undefined' ? t('errorRequestFailed') : '[ERROR] Request Failed';
-      const errorDetail = typeof t !== 'undefined' ? t('errorDetail') : '[DETAIL]';
-      const errorUnknown = typeof t !== 'undefined' ? t('errorUnknown') : 'Unknown error occurred';
+      const errorDetailLabel = typeof t !== 'undefined' ? t('errorDetail') : '[DETAIL]';
       resultEl.innerHTML = `
         <div class="result-card error">
           <h3>${errorTitle}</h3>
-          <p><strong>${errorDetail}</strong> ${error.detail || errorUnknown}</p>
+          <p><strong>${errorDetailLabel}</strong> ${errorDetail}</p>
         </div>
       `;
       return;
@@ -150,10 +189,6 @@ form.addEventListener("submit", async (event) => {
 
     const data = await response.json();
     setLoading(false);
-
-    // Debug: Console'a yazdır
-    console.log("Ping result:", data.ping_result);
-    console.log("Normalized JSON:", data.ping_result?.normalized_json);
 
     // Sonuçları kullanıcıya okunaklı formatta göster
     const statusClass = (status) => {
@@ -178,9 +213,7 @@ form.addEventListener("submit", async (event) => {
           ? (() => {
               const ping = data.ping_result;
               const norm = ping.normalized_json;
-              console.log("norm:", norm);
               if (!norm) {
-                console.log("normalized_json is null/undefined, showing raw output");
                 return `<p><strong>Ping Çıktısı:</strong></p><pre class="pre-block">${ping.raw_output || "Çıktı yok"}</pre>`;
               }
               const metrics = norm.metrics || {};
@@ -1132,6 +1165,149 @@ form.addEventListener("submit", async (event) => {
           : ""
       }
       ${data.note ? `<div class="result-card" style="margin-top: 1rem;"><p><strong>📝 Not:</strong> ${data.note}</p></div>` : ''}
+      ${data.ai_analysis ? (() => {
+        const analysis = data.ai_analysis;
+        const riskColors = {
+          critical: '#dc3545',
+          high: '#fd7e14',
+          medium: '#ffc107',
+          low: '#17a2b8',
+          safe: '#28a745',
+          unknown: '#6c757d'
+        };
+        const riskLabels = {
+          critical: 'Kritik',
+          high: 'Yüksek',
+          medium: 'Orta',
+          low: 'Düşük',
+          safe: 'Güvenli',
+          unknown: 'Bilinmiyor'
+        };
+        const priorityColors = {
+          critical: '#dc3545',
+          high: '#fd7e14',
+          medium: '#ffc107',
+          low: '#17a2b8'
+        };
+        
+        return `
+      <div class="result-card" style="margin-top: 1.5rem; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border: 2px solid #667eea;">
+        <h3 style="color: white; margin-bottom: 1rem;">🤖 AI Güvenlik Analizi</h3>
+        
+        <div style="background: white; padding: 20px; border-radius: 8px; margin-bottom: 15px;">
+          <p style="margin: 0 0 10px 0; color: #212529;"><strong>Hedef:</strong> ${analysis.target_url}</p>
+          <p style="margin: 0 0 10px 0; color: #212529;"><strong>Genel Risk Seviyesi:</strong> 
+            <span style="color: ${riskColors[analysis.overall_risk_level] || '#212529'}; font-weight: bold; font-size: 1.2em;">
+              ${riskLabels[analysis.overall_risk_level] || analysis.overall_risk_level.toUpperCase()}
+            </span>
+          </p>
+          <p style="margin: 0; color: #212529;"><strong>Toplam Bulgu:</strong> ${analysis.total_findings}</p>
+        </div>
+        
+        ${analysis.risk_summary ? `
+        <div style="background: white; padding: 20px; border-radius: 8px; margin-bottom: 15px;">
+          <h4 style="margin: 0 0 15px 0; color: #212529;">📊 Risk Seviyesi Özeti</h4>
+          <table style="width: 100%; border-collapse: collapse;">
+            <thead>
+              <tr style="background: #e9ecef;">
+                <th style="padding: 10px; text-align: left; border: 1px solid #dee2e6;">Risk Seviyesi</th>
+                <th style="padding: 10px; text-align: center; border: 1px solid #dee2e6;">Bulgu Sayısı</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${analysis.risk_summary.critical > 0 ? `
+                <tr style="background: #f8d7da;">
+                  <td style="padding: 10px; border: 1px solid #dee2e6;"><strong style="color: ${riskColors.critical};">Kritik</strong></td>
+                  <td style="padding: 10px; border: 1px solid #dee2e6; text-align: center;"><strong>${analysis.risk_summary.critical}</strong></td>
+                </tr>
+              ` : ''}
+              ${analysis.risk_summary.high > 0 ? `
+                <tr style="background: #fff3cd;">
+                  <td style="padding: 10px; border: 1px solid #dee2e6;"><strong style="color: ${riskColors.high};">Yüksek</strong></td>
+                  <td style="padding: 10px; border: 1px solid #dee2e6; text-align: center;"><strong>${analysis.risk_summary.high}</strong></td>
+                </tr>
+              ` : ''}
+              ${analysis.risk_summary.medium > 0 ? `
+                <tr style="background: #fff3cd;">
+                  <td style="padding: 10px; border: 1px solid #dee2e6;"><strong style="color: ${riskColors.medium};">Orta</strong></td>
+                  <td style="padding: 10px; border: 1px solid #dee2e6; text-align: center;"><strong>${analysis.risk_summary.medium}</strong></td>
+                </tr>
+              ` : ''}
+              ${analysis.risk_summary.low > 0 ? `
+                <tr style="background: #d1ecf1;">
+                  <td style="padding: 10px; border: 1px solid #dee2e6;"><strong style="color: ${riskColors.low};">Düşük</strong></td>
+                  <td style="padding: 10px; border: 1px solid #dee2e6; text-align: center;"><strong>${analysis.risk_summary.low}</strong></td>
+                </tr>
+              ` : ''}
+              ${analysis.risk_summary.info > 0 ? `
+                <tr>
+                  <td style="padding: 10px; border: 1px solid #dee2e6;"><strong style="color: ${riskColors.info};">Bilgi</strong></td>
+                  <td style="padding: 10px; border: 1px solid #dee2e6; text-align: center;"><strong>${analysis.risk_summary.info}</strong></td>
+                </tr>
+              ` : ''}
+            </tbody>
+          </table>
+        </div>
+        ` : ''}
+        
+        ${analysis.analysis_summary ? `
+        <div style="background: white; padding: 20px; border-radius: 8px; margin-bottom: 15px;">
+          <h4 style="margin: 0 0 15px 0; color: #212529;">📝 Analiz Özeti</h4>
+          <p style="margin: 0; color: #212529; line-height: 1.6;">${analysis.analysis_summary}</p>
+        </div>
+        ` : ''}
+        
+        ${analysis.tool_analyses && analysis.tool_analyses.length > 0 ? `
+        <div style="background: white; padding: 20px; border-radius: 8px; margin-bottom: 15px;">
+          <h4 style="margin: 0 0 15px 0; color: #212529;">🔧 Tool Bazlı Analizler</h4>
+          ${analysis.tool_analyses.map(ta => `
+            <div style="margin-bottom: 15px; padding: 15px; background: #f8f9fa; border-left: 4px solid ${riskColors[ta.risk_level] || '#6c757d'}; border-radius: 4px;">
+              <h5 style="margin: 0 0 10px 0; color: #212529;">
+                ${ta.tool_name.toUpperCase()} - 
+                <span style="color: ${riskColors[ta.risk_level] || '#212529'};">${riskLabels[ta.risk_level] || ta.risk_level}</span>
+                (${ta.findings_count} bulgu)
+              </h5>
+              <p style="margin: 0 0 10px 0; color: #212529; font-size: 0.9em;">${ta.summary}</p>
+              ${ta.key_issues && ta.key_issues.length > 0 ? `
+                <p style="margin: 5px 0; color: #212529; font-weight: bold;">Önemli Sorunlar:</p>
+                <ul style="margin: 5px 0 10px 20px; color: #212529;">
+                  ${ta.key_issues.map(issue => `<li>${issue}</li>`).join('')}
+                </ul>
+              ` : ''}
+              ${ta.recommendations && ta.recommendations.length > 0 ? `
+                <p style="margin: 5px 0; color: #212529; font-weight: bold;">Öneriler:</p>
+                <ul style="margin: 5px 0 0 20px; color: #212529;">
+                  ${ta.recommendations.map(rec => `<li>${rec}</li>`).join('')}
+                </ul>
+              ` : ''}
+            </div>
+          `).join('')}
+        </div>
+        ` : ''}
+        
+        ${analysis.recommendations && analysis.recommendations.length > 0 ? `
+        <div style="background: white; padding: 20px; border-radius: 8px;">
+          <h4 style="margin: 0 0 15px 0; color: #212529;">💡 Güvenlik Önerileri</h4>
+          ${analysis.recommendations.map((rec, idx) => `
+            <div style="margin-top: ${idx > 0 ? '20px' : '10px'}; padding: 15px; background: ${priorityColors[rec.priority] ? `${priorityColors[rec.priority]}20` : '#f8f9fa'}; border-left: 4px solid ${priorityColors[rec.priority] || '#6c757d'}; border-radius: 4px;">
+              <h5 style="margin: 0 0 10px 0; color: ${priorityColors[rec.priority] || '#212529'};">
+                ${idx + 1}. ${rec.title}
+              </h5>
+              <p style="margin: 0 0 10px 0; color: #212529;">${rec.description}</p>
+              <p style="margin: 0 0 10px 0; color: #6c757d; font-size: 0.9em;">
+                <strong>Etkilenen Araçlar:</strong> ${rec.affected_tools.join(', ')}
+              </p>
+              <p style="margin: 0; color: #212529;"><strong>Yapılacaklar:</strong></p>
+              <ul style="margin: 5px 0 0 20px; color: #212529;">
+                ${rec.action_items.map(item => `<li>${item}</li>`).join('')}
+              </ul>
+            </div>
+          `).join('')}
+        </div>
+        ` : ''}
+      </div>
+    `;
+      })() : ''}
     `;
   } catch (error) {
     console.error(error);
@@ -1151,11 +1327,24 @@ form.addEventListener("submit", async (event) => {
     // Diğer hatalar için genel hata mesajı
     const errorTitle = typeof t !== 'undefined' ? t('errorSystemFailure') : '[ERROR] System Failure';
     const errorMsg = typeof t !== 'undefined' ? 'Unexpected error occurred during request processing.' : 'Unexpected error occurred during request processing.';
+    
+    // Daha detaylı hata mesajı
+    let detailedError = error.message || 'Bilinmeyen hata';
+    if (error.message && error.message.includes('Failed to fetch')) {
+      detailedError = 'Backend\'e bağlanılamadı. Lütfen backend\'in çalıştığından emin olun (http://localhost:8000). Backend\'i başlatmak için: cd backend && uvicorn src.main:app --reload --host 0.0.0.0 --port 8000';
+    } else if (error.message && error.message.includes('NetworkError')) {
+      detailedError = 'Ağ hatası. Backend çalışıyor mu kontrol edin.';
+    }
+    
     resultEl.innerHTML = `
       <div class="result-card error">
         <h3>${errorTitle}</h3>
         <p><strong>[ERROR]:</strong> ${errorMsg}</p>
-        <p style="margin-top: 0.5rem; font-size: 0.9rem; color: var(--text-muted);">${error.message || (typeof t !== 'undefined' ? t('errorUnknown') : 'Bilinmeyen hata')}</p>
+        <p style="margin-top: 0.5rem; font-size: 0.9rem; color: var(--text-muted);">${detailedError}</p>
+        <p style="margin-top: 0.5rem; font-size: 0.85rem; color: var(--text-muted);">
+          <strong>Backend URL:</strong> ${API_BASE}<br>
+          <strong>Backend durumunu kontrol et:</strong> <a href="${API_BASE}/health" target="_blank">${API_BASE}/health</a>
+        </p>
       </div>
     `;
   }
@@ -1166,6 +1355,9 @@ document.addEventListener('languageChanged', (e) => {
   // Dil değiştiğinde UI güncellenir
   // Bu event lang.js tarafından gönderilir
 });
+
+// Analiz artık otomatik yapılıyor, buton ve handleAnalysis fonksiyonu kaldırıldı
+
 
 // Sayfa yüklendiğinde input'a odaklan
 window.addEventListener('load', () => {

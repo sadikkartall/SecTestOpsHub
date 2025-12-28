@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException, status
 
 from ..models.scan import ScanRequest, ScanPlan
 from ..services import ping, whois, nmap, nikto, gobuster, zap, testssl, dnsrecon, theharvester, subfinder
+from ..services.analyze_results import analyze_scan_results, AnalysisResult
 
 router = APIRouter(prefix="/scans", tags=["scans"])
 
@@ -189,7 +190,7 @@ async def create_scan_plan(payload: ScanRequest) -> ScanPlan:
                 detail=str(exc),
             ) from exc
 
-    return ScanPlan(
+    scan_plan = ScanPlan(
         target_url=normalized_target,
         tools=selected_tools,
         output_dir=output_dir,
@@ -206,5 +207,59 @@ async def create_scan_plan(payload: ScanRequest) -> ScanPlan:
         subfinder_result=subfinder_result,
         note="Seçilen araçlar başarıyla çalıştırıldı.",
     )
+    
+    # AI analizi yap (otomatik)
+    try:
+        print(f"[INFO] AI analizi başlatılıyor... Hedef: {scan_plan.target_url}")
+        analysis_result = analyze_scan_results(scan_plan)
+        print(f"[INFO] AI analizi tamamlandı. Risk seviyesi: {analysis_result.overall_risk_level}")
+        print(f"[INFO] Tool analizleri sayısı: {len(analysis_result.tool_analyses)}")
+        print(f"[INFO] Öneriler sayısı: {len(analysis_result.recommendations)}")
+        
+        # Analiz sonucunu scan_plan'a ekle
+        scan_plan.ai_analysis = analysis_result.model_dump()
+        if analysis_result.analysis_summary:
+            scan_plan.note = f"{scan_plan.note} AI Analiz: {analysis_result.overall_risk_level.upper()} risk seviyesi tespit edildi."
+        
+        print(f"[SUCCESS] AI analiz sonucu scan_plan'a eklendi.")
+    except Exception as e:
+        # Analiz başarısız olursa detaylı log ve devam et
+        import traceback
+        error_trace = traceback.format_exc()
+        print(f"[ERROR] AI analizi başarısız: {e}")
+        print(f"[ERROR] Hata detayı:\n{error_trace}")
+        scan_plan.ai_analysis = None
+        scan_plan.note = f"{scan_plan.note} AI Analiz hatası: {str(e)}"
+    
+    return scan_plan
+
+
+@router.post("/analyze", response_model=AnalysisResult, status_code=status.HTTP_200_OK)
+async def analyze_scan(payload: ScanPlan) -> AnalysisResult:
+    """
+    Tarama sonuçlarını Gemini AI ile analiz eder ve güvenlik önerileri sunar.
+    
+    Args:
+        payload: Tarama planı (tüm araç sonuçları)
+        
+    Returns:
+        AnalysisResult: AI analiz sonuçları, risk seviyesi tablosu ve öneriler
+        
+    Raises:
+        HTTPException: Analiz başarısız olduğunda
+    """
+    try:
+        analysis_result = analyze_scan_results(payload)
+        return analysis_result
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(exc),
+        ) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Analiz sırasında beklenmeyen hata: {str(exc)}",
+        ) from exc
 
 

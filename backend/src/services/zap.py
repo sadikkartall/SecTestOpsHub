@@ -204,6 +204,74 @@ def normalize_zap(
                 except ValueError:
                     pass
     
+    # Alert isimlerini Türkçe'ye çevir
+    def translate_alert_name(alert_name: str) -> str:
+        """Yaygın ZAP alert isimlerini Türkçe'ye çevirir."""
+        translations = {
+            "Content Security Policy (CSP) Header Not Set": "Content Security Policy (CSP) Başlığı Ayarlanmamış",
+            "Directory Browsing": "Dizin Tarama",
+            "HTTP Only Site": "Sadece HTTP Kullanan Site",
+            "Missing Anti-clickjacking Header": "Anti-clickjacking Başlığı Eksik",
+            "Sub Resource Integrity Attribute Missing": "Sub Resource Integrity Özelliği Eksik",
+            "In Page Banner Information Leak": "Sayfa İçi Banner Bilgi Sızıntısı",
+            "Server Leaks Version Information via \"Server\" HTTP Response Header Field": "Sunucu \"Server\" HTTP Yanıt Başlığı Üzerinden Versiyon Bilgisi Sızdırıyor",
+            "X-Content-Type-Options Header Missing": "X-Content-Type-Options Başlığı Eksik",
+            "Modern Web Application": "Modern Web Uygulaması",
+            "User Agent Fuzzer": "User Agent Fuzzer",
+            "Cross Site Scripting (Reflected)": "Cross Site Scripting (Yansıtılmış)",
+            "Cross Site Scripting (Stored)": "Cross Site Scripting (Depolanmış)",
+            "SQL Injection": "SQL Injection",
+            "Path Traversal": "Path Traversal",
+            "Remote File Inclusion": "Uzak Dosya Ekleme",
+            "Command Injection": "Komut Injection",
+            "XML External Entity (XXE)": "XML External Entity (XXE)",
+            "Server-Side Request Forgery (SSRF)": "Server-Side Request Forgery (SSRF)",
+            "Insecure HTTP Methods": "Güvensiz HTTP Metodları",
+            "Absence of Anti-CSRF Tokens": "Anti-CSRF Token Eksikliği",
+            "Cookie Without Secure Flag": "Secure Bayrağı Olmayan Cookie",
+            "Cookie Without HttpOnly Flag": "HttpOnly Bayrağı Olmayan Cookie",
+            "Weak Authentication": "Zayıf Kimlik Doğrulama",
+            "Session Fixation": "Oturum Sabitleme",
+            "Insecure Randomness": "Güvensiz Rastgelelik",
+            "Timestamp Disclosure": "Zaman Damgası Açığa Çıkması",
+            "Information Disclosure - Debug Error Messages": "Bilgi Açığa Çıkması - Debug Hata Mesajları",
+            "Information Disclosure - Sensitive Information in URL": "Bilgi Açığa Çıkması - URL'de Hassas Bilgi",
+            "Information Disclosure - Suspicious Comments": "Bilgi Açığa Çıkması - Şüpheli Yorumlar",
+        }
+        return translations.get(alert_name, alert_name)
+    
+    # Description ve Solution metinlerini Türkçe'ye çevir
+    def translate_description_solution(alert_name: str, description: str, solution: str) -> tuple[str, str]:
+        """Alert tipine göre description ve solution metinlerini Türkçe'ye çevirir."""
+        # Description çevirileri
+        desc_translations = {
+            "Content Security Policy (CSP) Header Not Set": "Content Security Policy (CSP), Cross Site Scripting (XSS) ve veri enjeksiyon saldırıları gibi belirli saldırı türlerini tespit etmeye ve azaltmaya yardımcı olan ek bir güvenlik katmanıdır. Bu saldırılar, veri hırsızlığından site defacement'ine kadar her şey için kullanılabilir.",
+            "Directory Browsing": "Dizin listesini görüntülemek mümkündür. Dizin listesi, hassas bilgileri okumak için erişilebilen gizli script'leri, include dosyalarını, yedek kaynak dosyalarını vb. ortaya çıkarabilir.",
+            "HTTP Only Site": "Site sadece HTTP altında sunulmaktadır ve HTTPS kullanmamaktadır.",
+            "Missing Anti-clickjacking Header": "Yanıt 'ClickJacking' saldırılarına karşı koruma sağlamamaktadır. 'frame-ancestors' direktifi ile Content-Security-Policy veya X-Frame-Options içermelidir.",
+            "Sub Resource Integrity Attribute Missing": "Harici bir sunucu tarafından sunulan bir script veya link etiketinde integrity özelliği eksiktir. Integrity etiketi, bu sunucuya erişim kazanmış bir saldırganın kötü amaçlı içerik enjekte etmesini önler.",
+            "In Page Banner Information Leak": "Sunucu, yanıt içeriğinde bir versiyon banner dizisi döndürdü. Bu tür bilgi sızıntıları, saldırganların belirli sorunları etkileyen sistemleri daha fazla hedeflemesine izin verebilir.",
+            "Server Leaks Version Information via \"Server\" HTTP Response Header Field": "Web/uygulama sunucusu, \"Server\" HTTP yanıt başlığı üzerinden versiyon bilgisi sızdırıyor. Bu tür bilgilere erişim, saldırganların bilinen güvenlik açıklarını hedeflemesini kolaylaştırabilir.",
+            "X-Content-Type-Options Header Missing": "Anti-MIME-Sniffing başlığı X-Content-Type-Options 'nosniff' olarak ayarlanmamış. Bu, Internet Explorer ve Chrome'un eski sürümlerinin MIME türü algılaması yapmasına izin verir.",
+        }
+        
+        # Solution çevirileri
+        sol_translations = {
+            "Content Security Policy (CSP) Header Not Set": "Web sunucunuzun, uygulama sunucunuzun, yük dengeleyicinizin vb. Content-Security-Policy başlığını ayarlamak üzere yapılandırıldığından emin olun.",
+            "Directory Browsing": "Dizin taramayı devre dışı bırakın. Bu gerekliyse, listelenen dosyaların risk oluşturmadığından emin olun.",
+            "HTTP Only Site": "Web veya uygulama sunucunuzu SSL (https) kullanacak şekilde yapılandırın.",
+            "Missing Anti-clickjacking Header": "Modern Web tarayıcıları Content-Security-Policy ve X-Frame-Options HTTP başlıklarını destekler. Web sunucunuzun döndürdüğü tüm web sayfalarında bunlardan birinin ayarlandığından emin olun.",
+            "Sub Resource Integrity Attribute Missing": "Etikete geçerli bir integrity özelliği sağlayın.",
+            "In Page Banner Information Leak": "Sunucu yanıtlarından banner bilgilerini kaldırın.",
+            "Server Leaks Version Information via \"Server\" HTTP Response Header Field": "Sunucu yanıt başlığından versiyon bilgisini kaldırın veya genel bir değer kullanın.",
+            "X-Content-Type-Options Header Missing": "Tüm web sayfalarında X-Content-Type-Options başlığını 'nosniff' olarak ayarlayın.",
+        }
+        
+        translated_desc = desc_translations.get(alert_name, description)
+        translated_sol = sol_translations.get(alert_name, solution)
+        
+        return translated_desc, translated_sol
+    
     # Alert Detail bölümlerini parse et
     alert_detail_sections = soup.find_all('table', class_='results')
     for section in alert_detail_sections:
@@ -296,15 +364,21 @@ def normalize_zap(
         elif 'Low' in risk_level:
             severity = "LOW"
         
+        # Alert ismini Türkçe'ye çevir
+        translated_alert_name = translate_alert_name(alert_name)
+        
+        # Description ve Solution'ı Türkçe'ye çevir
+        translated_description, translated_solution = translate_description_solution(alert_name, description, solution)
+        
         findings.append(Finding(
             type="security_alert",
             severity=severity,
-            title=alert_name,
+            title=translated_alert_name,
             evidence={
                 "alert_id": alert_id,
-                "description": description,
+                "description": translated_description,
                 "urls": urls[:10],  # İlk 10 URL
-                "solution": solution,
+                "solution": translated_solution,
                 "cwe_id": cwe_id,
                 "wasc_id": wasc_id,
                 "plugin_id": plugin_id
@@ -319,10 +393,10 @@ def normalize_zap(
     
     if total_risk > 0:
         status = "success"
-        summary = f"ZAP scan found {total_risk} security alert(s): {metrics['risk_summary']['high']} High, {metrics['risk_summary']['medium']} Medium, {metrics['risk_summary']['low']} Low, {metrics['risk_summary']['informational']} Informational."
+        summary = f"ZAP taraması {total_risk} güvenlik uyarısı buldu: {metrics['risk_summary']['high']} Yüksek, {metrics['risk_summary']['medium']} Orta, {metrics['risk_summary']['low']} Düşük, {metrics['risk_summary']['informational']} Bilgilendirme."
     else:
         status = "success"
-        summary = f"ZAP scan completed for {target}. No security alerts found."
+        summary = f"ZAP taraması {target} için tamamlandı. Güvenlik uyarısı bulunamadı."
     
     return NormalizedResult(
         tool="zap",
