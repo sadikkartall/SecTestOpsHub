@@ -25,6 +25,18 @@ const translations = {
     toolTheharvester: "theHarvester",
     toolSubfinder: "Subfinder",
     
+    // Tool Tooltips
+    tooltipPing: "Network connectivity test. Checks if target is reachable and measures response time (RTT).",
+    tooltipWhois: "Domain registration information lookup. Retrieves registrar, creation date, expiration, and contact details.",
+    tooltipNmap: "Network port scanner. Discovers open ports, services, OS detection, and network topology.",
+    tooltipNikto: "Web server vulnerability scanner. Identifies misconfigurations, outdated software, and security issues.",
+    tooltipGobuster: "Directory/file brute-forcing tool. Discovers hidden paths, files, and directories on web servers.",
+    tooltipZap: "OWASP ZAP automated security scanner. Performs comprehensive web application security testing.",
+    tooltipTestssl: "SSL/TLS configuration analyzer. Tests cipher suites, protocols, certificates, and security headers.",
+    tooltipDnsrecon: "DNS enumeration tool. Discovers DNS records, subdomains, and DNS security configurations.",
+    tooltipTheharvester: "OSINT information gathering tool. Collects emails, subdomains, hosts, and employee information.",
+    tooltipSubfinder: "Subdomain discovery tool. Uses multiple passive sources to find subdomains of target domains.",
+    
     // Buttons
     btnStartScan: "[EXECUTE] Start Scan",
     btnStopScan: "[ABORT] Stop Scan",
@@ -120,6 +132,18 @@ const translations = {
     toolDnsrecon: "dnsrecon",
     toolTheharvester: "theHarvester",
     toolSubfinder: "Subfinder",
+    
+    // Tool Tooltips
+    tooltipPing: "Ağ bağlantı testi. Hedefin erişilebilir olup olmadığını kontrol eder ve yanıt süresini (RTT) ölçer.",
+    tooltipWhois: "Domain kayıt bilgisi sorgulama. Kayıt şirketi, oluşturulma tarihi, son kullanma ve iletişim bilgilerini getirir.",
+    tooltipNmap: "Ağ port tarayıcı. Açık portları, servisleri, işletim sistemi tespiti ve ağ topolojisini keşfeder.",
+    tooltipNikto: "Web sunucu güvenlik açığı tarayıcı. Yanlış yapılandırmalar, eski yazılımlar ve güvenlik sorunlarını tespit eder.",
+    tooltipGobuster: "Dizin/dosya kaba kuvvet aracı. Web sunuculardaki gizli yollar, dosyalar ve dizinleri keşfeder.",
+    tooltipZap: "OWASP ZAP otomatik güvenlik tarayıcı. Kapsamlı web uygulama güvenlik testleri yapar.",
+    tooltipTestssl: "SSL/TLS yapılandırma analiz aracı. Şifre paketleri, protokoller, sertifikalar ve güvenlik başlıklarını test eder.",
+    tooltipDnsrecon: "DNS numaralandırma aracı. DNS kayıtlarını, alt domainleri ve DNS güvenlik yapılandırmalarını keşfeder.",
+    tooltipTheharvester: "OSINT bilgi toplama aracı. E-postalar, alt domainler, hostlar ve çalışan bilgilerini toplar.",
+    tooltipSubfinder: "Alt domain keşif aracı. Hedef domainlerin alt domainlerini bulmak için birden fazla pasif kaynak kullanır.",
     
     // Buttons
     btnStartScan: "[ÇALIŞTIR] Taramayı Başlat",

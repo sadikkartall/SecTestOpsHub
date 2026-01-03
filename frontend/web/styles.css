@@ -409,6 +409,46 @@ body::after {
   box-shadow: 0 0 10px rgba(0, 255, 65, 0.3);
 }
 
+/* ===== Tool Tooltip ===== */
+.tool-checkbox .tool-tooltip {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  transform: translateX(-50%) translateY(-5px);
+  background: rgba(13, 17, 23, 0.98);
+  border: 1px solid var(--text-success);
+  color: var(--text-primary);
+  padding: 0.75rem 1rem;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  font-family: 'JetBrains Mono', monospace;
+  white-space: normal;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  z-index: 1000;
+  max-width: 300px;
+  min-width: 200px;
+  text-align: center;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5), 0 0 10px rgba(0, 255, 65, 0.3);
+  line-height: 1.4;
+}
+
+.tool-checkbox .tool-tooltip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-top-color: var(--text-success);
+}
+
+.tool-checkbox:hover .tool-tooltip {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
 .tool-checkbox input[type="checkbox"] {
   display: none;
 }
@@ -450,6 +490,46 @@ body::after {
   color: var(--text-code);
   font-size: 1rem;
   font-family: 'JetBrains Mono', monospace;
+}
+
+/* ===== Tool Tooltip ===== */
+.tool-checkbox .tool-tooltip {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  transform: translateX(-50%) translateY(-5px);
+  background: rgba(13, 17, 23, 0.98);
+  border: 1px solid var(--text-success);
+  color: var(--text-primary);
+  padding: 0.75rem 1rem;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  font-family: 'JetBrains Mono', monospace;
+  white-space: normal;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  z-index: 1000;
+  max-width: 300px;
+  min-width: 200px;
+  text-align: center;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5), 0 0 10px rgba(0, 255, 65, 0.3);
+  line-height: 1.4;
+}
+
+.tool-checkbox .tool-tooltip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-top-color: var(--text-success);
+}
+
+.tool-checkbox:hover .tool-tooltip {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
 }
 
 /* ===== Button Group ===== */

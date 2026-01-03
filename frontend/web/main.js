@@ -10,6 +10,29 @@ const buttonLoader = submitBtn.querySelector(".button-loader");
 // Yardımcı: API kök adresi; gerekirse reverse proxy ile güncellenebilir
 const API_BASE = "http://localhost:8000";
 
+// #region agent log
+// Debug logging helper
+function debugLog(location, message, data, hypothesisId) {
+  const logEntry = {
+    location: location,
+    message: message,
+    data: data || {},
+    timestamp: Date.now(),
+    sessionId: 'debug-session',
+    runId: 'run1',
+    hypothesisId: hypothesisId || 'A'
+  };
+  // Console'a yazdır (her zaman çalışır)
+  console.log(`[DEBUG ${hypothesisId || 'A'}] ${location}: ${message}`, data || '');
+  // HTTP ile gönder (başarısız olabilir)
+  fetch('http://127.0.0.1:7242/ingest/f0cb9098-829a-4739-870b-4e63c98e0a80', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(logEntry)
+  }).catch(err => console.warn('[DEBUG] Log gönderilemedi:', err.message));
+}
+// #endregion
+
 // AbortController for request cancellation
 let abortController = null;
 
@@ -122,24 +145,58 @@ form.addEventListener("submit", async (event) => {
   // AbortController oluştur
   abortController = new AbortController();
 
+  // #region agent log
+  debugLog('main.js:123', 'Form submit başladı', {targetUrl, tools, API_BASE}, 'A');
+  // #endregion
+
   try {
     // Önce backend'in çalışıp çalışmadığını kontrol et
     try {
-      const healthCheck = await fetch(`${API_BASE}/health`, {
+      // #region agent log
+      const healthCheckUrl = `${API_BASE}/health`;
+      debugLog('main.js:128', 'Health check başlatılıyor', {url: healthCheckUrl, signal: abortController.signal ? 'var' : 'yok'}, 'B');
+      // #endregion
+      
+      const healthCheck = await fetch(healthCheckUrl, {
         method: "GET",
         signal: abortController.signal,
+        cache: 'no-cache',
       });
+      
+      // #region agent log
+      debugLog('main.js:137', 'Health check yanıtı alındı', {status: healthCheck.status, statusText: healthCheck.statusText, ok: healthCheck.ok, url: healthCheck.url}, 'B');
+      // #endregion
+      
       if (!healthCheck.ok) {
-        throw new Error('Backend health check başarısız');
+        // #region agent log
+        debugLog('main.js:140', 'Health check başarısız', {status: healthCheck.status, statusText: healthCheck.statusText}, 'C');
+        // #endregion
+        throw new Error(`Backend health check başarısız: HTTP ${healthCheck.status}`);
       }
+      
+      // #region agent log
+      const healthData = await healthCheck.json();
+      debugLog('main.js:147', 'Health check başarılı', healthData, 'B');
+      // #endregion
     } catch (healthError) {
+      // #region agent log
+      debugLog('main.js:150', 'Health check hatası yakalandı', {
+        name: healthError.name,
+        message: healthError.message,
+        stack: healthError.stack?.substring(0, 200)
+      }, 'D');
+      // #endregion
+      
       setLoading(false);
       resultEl.innerHTML = `
         <div class="result-card error">
           <h3>❌ Backend Bağlantı Hatası</h3>
           <p><strong>[ERROR]:</strong> Backend'e bağlanılamadı.</p>
           <p style="margin-top: 0.5rem; font-size: 0.9rem; color: var(--text-muted);">
-            Backend'in çalıştığından emin olun: <code>http://localhost:8000</code>
+            <strong>Hata:</strong> ${healthError.name}: ${healthError.message}
+          </p>
+          <p style="margin-top: 0.5rem; font-size: 0.9rem; color: var(--text-muted);">
+            Backend'in çalıştığından emin olun: <code>${API_BASE}</code>
           </p>
           <p style="margin-top: 0.5rem; font-size: 0.85rem; color: var(--text-muted);">
             <strong>Backend'i başlatmak için:</strong><br>
@@ -156,15 +213,25 @@ form.addEventListener("submit", async (event) => {
       return;
     }
     
-    const response = await fetch(`${API_BASE}/scans/`, {
+    // #region agent log
+    const scanRequestData = {
+      target_url: targetUrl,
+      tools: tools.length ? tools : null,
+    };
+    const scanUrl = `${API_BASE}/scans/`;
+    debugLog('main.js:170', 'Scan isteği başlatılıyor', {url: scanUrl, data: scanRequestData, signal: abortController.signal ? 'var' : 'yok'}, 'E');
+    // #endregion
+    
+    const response = await fetch(scanUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        target_url: targetUrl,
-        tools: tools.length ? tools : null,
-      }),
+      body: JSON.stringify(scanRequestData),
       signal: abortController.signal, // AbortController'ı bağla
     });
+    
+    // #region agent log
+    debugLog('main.js:180', 'Scan isteği yanıtı alındı', {status: response.status, statusText: response.statusText, ok: response.ok, url: response.url}, 'E');
+    // #endregion
 
     if (!response.ok) {
       let errorDetail = 'Unknown error occurred';
@@ -223,14 +290,14 @@ form.addEventListener("submit", async (event) => {
               return `
             <div class="result-card ${statusClass(norm.status)}">
               <h3>📡 ${norm.summary || 'Ping Sonuçları'}</h3>
-              <p><strong>Durum:</strong> ${norm.status === 'success' ? '✅ Başarılı' : norm.status === 'failed' ? '❌ Başarısız' : '⚠️ Kısmi'}</p>
-              <p><strong>Hedef:</strong> ${norm.target || ping.ip_address}</p>
-              ${metrics.resolved_ip ? `<p><strong>IP Adresi:</strong> <code style="background: rgba(255,255,255,0.1); padding: 2px 6px; border-radius: 4px;">${metrics.resolved_ip}</code></p>` : ''}
-              ${metrics.reachability ? `<p><strong>Erişilebilirlik:</strong> ${metrics.reachability === 'reachable' ? '✅ Erişilebilir' : metrics.reachability === 'unreachable' ? '❌ Erişilemiyor' : '❓ Bilinmiyor'}</p>` : ''}
-              ${packets.sent ? `<p><strong>Paketler:</strong> ${packets.sent} gönderildi, ${packets.received} alındı, ${packets.lost} kayıp (${packets.loss_percent || 0}%)</p>` : ''}
-              ${rtt.avg ? `<p><strong>Gecikme (RTT):</strong> Ortalama: ${rtt.avg.toFixed(2)} ms, Min: ${rtt.min?.toFixed(2) || (typeof t !== 'undefined' ? t('notAvailable') : 'Yok')} ms, Max: ${rtt.max?.toFixed(2) || (typeof t !== 'undefined' ? t('notAvailable') : 'Yok')} ms</p>` : ''}
-              ${metrics.duration_ms ? `<p><strong>Süre:</strong> ${metrics.duration_ms} ms</p>` : ''}
-              ${norm.findings && norm.findings.length > 0 ? `<p><strong>Bulgular:</strong> ${norm.findings.map(f => f.title).join(', ')}</p>` : ''}
+              <p style="color: white;"><strong>Durum:</strong> ${norm.status === 'success' ? '✅ Başarılı' : norm.status === 'failed' ? '❌ Başarısız' : '⚠️ Kısmi'}</p>
+              <p style="color: white;"><strong>Hedef:</strong> ${norm.target || ping.ip_address}</p>
+              ${metrics.resolved_ip ? `<p style="color: white;"><strong>IP Adresi:</strong> <code style="background: rgba(255,255,255,0.1); padding: 2px 6px; border-radius: 4px;">${metrics.resolved_ip}</code></p>` : ''}
+              ${metrics.reachability ? `<p style="color: white;"><strong>Erişilebilirlik:</strong> ${metrics.reachability === 'reachable' ? '✅ Erişilebilir' : metrics.reachability === 'unreachable' ? '❌ Erişilemiyor' : '❓ Bilinmiyor'}</p>` : ''}
+              ${packets.sent ? `<p style="color: white;"><strong>Paketler:</strong> ${packets.sent} gönderildi, ${packets.received} alındı, ${packets.lost} kayıp (${packets.loss_percent || 0}%)</p>` : ''}
+              ${rtt.avg ? `<p style="color: white;"><strong>Gecikme (RTT):</strong> Ortalama: ${rtt.avg.toFixed(2)} ms, Min: ${rtt.min?.toFixed(2) || (typeof t !== 'undefined' ? t('notAvailable') : 'Yok')} ms, Max: ${rtt.max?.toFixed(2) || (typeof t !== 'undefined' ? t('notAvailable') : 'Yok')} ms</p>` : ''}
+              ${metrics.duration_ms ? `<p style="color: white;"><strong>Süre:</strong> ${metrics.duration_ms} ms</p>` : ''}
+              ${norm.findings && norm.findings.length > 0 ? `<p style="color: white;"><strong>Bulgular:</strong> ${norm.findings.map(f => f.title).join(', ')}</p>` : ''}
               <details>
                 <summary>${typeof t !== 'undefined' ? t('rawOutput') : '[HAM ÇIKTI]'}</summary>
                 <pre class="pre-block">${ping.raw_output || "Çıktı yok"}</pre>
@@ -267,25 +334,25 @@ form.addEventListener("submit", async (event) => {
               return `
             <div class="result-card ${statusClass(norm.status)}">
               <h3>📋 ${norm.summary || 'Whois Sonuçları'}</h3>
-              <p style="color: #212529;"><strong>Durum:</strong> ${norm.status === 'success' ? '✅ Başarılı' : norm.status === 'failed' ? '❌ Başarısız' : '⚠️ Kısmi'}</p>
-              <p style="color: #212529;"><strong>Hedef:</strong> ${norm.target || metrics.domain || (typeof t !== 'undefined' ? t('notAvailable') : 'Yok')}</p>
-              ${metrics.domain ? `<p style="color: #212529;"><strong>Domain:</strong> ${metrics.domain}</p>` : ''}
-              ${metrics.registrar ? `<p style="color: #212529;"><strong>Registrar:</strong> ${metrics.registrar}</p>` : ''}
-              ${dates.creation ? `<p style="color: #212529;"><strong>Kayıt Tarihi:</strong> ${dates.creation}</p>` : ''}
-              ${dates.updated ? `<p style="color: #212529;"><strong>Son Güncelleme:</strong> ${dates.updated}</p>` : ''}
-              ${dates.expiry ? `<p style="color: #212529;"><strong>Son Kullanma:</strong> ${dates.expiry}</p>` : ''}
-              ${metrics.nameservers && metrics.nameservers.length > 0 ? `<p style="color: #212529;"><strong>Name Servers:</strong> ${metrics.nameservers.join(', ')}</p>` : ''}
-              ${metrics.ip_range ? `<p style="color: #212529;"><strong>IP Range:</strong> ${metrics.ip_range}</p>` : ''}
-              ${metrics.cidr ? `<p style="color: #212529;"><strong>CIDR:</strong> ${metrics.cidr}</p>` : ''}
-              ${metrics.netname ? `<p style="color: #212529;"><strong>${typeof t !== 'undefined' ? t('networkName') : 'Ağ Adı'}:</strong> ${metrics.netname}</p>` : ''}
-              ${metrics.organization ? `<p style="color: #212529;"><strong>${typeof t !== 'undefined' ? t('organization') : 'Kuruluş'}:</strong> ${metrics.organization}</p>` : ''}
-              ${metrics.country ? `<p style="color: #212529;"><strong>${typeof t !== 'undefined' ? t('country') : 'Ülke'}:</strong> ${metrics.country}</p>` : ''}
-              ${metrics.abuse_contact ? `<p style="color: #212529;"><strong>${typeof t !== 'undefined' ? t('abuseContact') : 'Kötüye Kullanım İletişim'}:</strong> ${metrics.abuse_contact}</p>` : ''}
-              ${metrics.duration_ms ? `<p style="color: #212529;"><strong>Süre:</strong> ${metrics.duration_ms} ms</p>` : ''}
-              ${norm.findings && norm.findings.length > 0 ? `<p style="color: #212529;"><strong>Bulgular:</strong> ${norm.findings.map(f => `${f.severity}: ${f.title}`).join(', ')}</p>` : ''}
+              <p style="color: white;"><strong>Durum:</strong> ${norm.status === 'success' ? '✅ Başarılı' : norm.status === 'failed' ? '❌ Başarısız' : '⚠️ Kısmi'}</p>
+              <p style="color: white;"><strong>Hedef:</strong> ${norm.target || metrics.domain || (typeof t !== 'undefined' ? t('notAvailable') : 'Yok')}</p>
+              ${metrics.domain ? `<p style="color: white;"><strong>Domain:</strong> ${metrics.domain}</p>` : ''}
+              ${metrics.registrar ? `<p style="color: white;"><strong>Registrar:</strong> ${metrics.registrar}</p>` : ''}
+              ${dates.creation ? `<p style="color: white;"><strong>Kayıt Tarihi:</strong> ${dates.creation}</p>` : ''}
+              ${dates.updated ? `<p style="color: white;"><strong>Son Güncelleme:</strong> ${dates.updated}</p>` : ''}
+              ${dates.expiry ? `<p style="color: white;"><strong>Son Kullanma:</strong> ${dates.expiry}</p>` : ''}
+              ${metrics.nameservers && metrics.nameservers.length > 0 ? `<p style="color: white;"><strong>Name Servers:</strong> ${metrics.nameservers.join(', ')}</p>` : ''}
+              ${metrics.ip_range ? `<p style="color: white;"><strong>IP Range:</strong> ${metrics.ip_range}</p>` : ''}
+              ${metrics.cidr ? `<p style="color: white;"><strong>CIDR:</strong> ${metrics.cidr}</p>` : ''}
+              ${metrics.netname ? `<p style="color: white;"><strong>${typeof t !== 'undefined' ? t('networkName') : 'Ağ Adı'}:</strong> ${metrics.netname}</p>` : ''}
+              ${metrics.organization ? `<p style="color: white;"><strong>${typeof t !== 'undefined' ? t('organization') : 'Kuruluş'}:</strong> ${metrics.organization}</p>` : ''}
+              ${metrics.country ? `<p style="color: white;"><strong>${typeof t !== 'undefined' ? t('country') : 'Ülke'}:</strong> ${metrics.country}</p>` : ''}
+              ${metrics.abuse_contact ? `<p style="color: white;"><strong>${typeof t !== 'undefined' ? t('abuseContact') : 'Kötüye Kullanım İletişim'}:</strong> ${metrics.abuse_contact}</p>` : ''}
+              ${metrics.duration_ms ? `<p style="color: white;"><strong>Süre:</strong> ${metrics.duration_ms} ms</p>` : ''}
+              ${norm.findings && norm.findings.length > 0 ? `<p style="color: white;"><strong>Bulgular:</strong> ${norm.findings.map(f => `${f.severity}: ${f.title}`).join(', ')}</p>` : ''}
               <details style="margin-top: 10px;">
                 <summary>${typeof t !== 'undefined' ? t('rawOutput') : '[HAM ÇIKTI]'}</summary>
-                <pre class="pre-block" style="margin-top: 10px; color: #212529;">${whois.raw_output || "Çıktı yok"}</pre>
+                <pre class="pre-block" style="margin-top: 10px; color: #c9d1d9;">${whois.raw_output || "Çıktı yok"}</pre>
               </details>
               <details style="margin-top: 10px;">
                 <summary>${typeof t !== 'undefined' ? t('normalizedJson') : '[NORMALİZE EDİLMİŞ JSON]'}</summary>
@@ -293,7 +360,7 @@ form.addEventListener("submit", async (event) => {
                   <button class="download-json-btn" onclick="window.downloadJSON(${JSON.stringify(JSON.stringify(norm, null, 2))}, '${(norm.target || data.target_url || 'whois').replace(/[^a-z0-9]/gi, '_').toLowerCase()}-whois-results.json.txt')">${typeof t !== 'undefined' ? t('downloadJson') : 'JSON İndir'}</button>
                   <button class="download-json-btn" onclick="window.downloadPDF(${JSON.stringify(norm)}, '${(norm.target || data.target_url || 'whois').replace(/[^a-z0-9]/gi, '_').toLowerCase()}-whois-results.json.pdf')">${typeof t !== 'undefined' ? t('downloadPdf') : 'PDF İndir'}</button>
                 </div>
-                <pre class="pre-block" style="margin-top: 10px; color: #212529;">${JSON.stringify(norm, null, 2)}</pre>
+                <pre class="pre-block" style="margin-top: 10px; color: #c9d1d9;">${JSON.stringify(norm, null, 2)}</pre>
               </details>
             </div>
           `;
@@ -323,40 +390,40 @@ form.addEventListener("submit", async (event) => {
               return `
             <div class="result-card ${statusClass(norm.status)}">
               <h3>🔍 ${norm.summary || 'Nmap Sonuçları'}</h3>
-              <p style="color: #212529;"><strong>Durum:</strong> ${norm.status === 'success' ? '✅ Başarılı' : norm.status === 'failed' ? '❌ Başarısız' : '⚠️ Kısmi'}</p>
-              <p style="color: #212529;"><strong>Hedef:</strong> ${norm.target || (typeof t !== 'undefined' ? t('notAvailable') : 'Yok')}</p>
-              <p style="color: #212529;"><strong>Host Durumu:</strong> ${metrics.host_status === 'up' ? `✅ ${typeof t !== 'undefined' ? t('up') : 'Açık'}` : metrics.host_status === 'down' ? `❌ ${typeof t !== 'undefined' ? t('down') : 'Kapalı'}` : `❓ ${typeof t !== 'undefined' ? t('unknown') : 'Bilinmiyor'}`}</p>
-              ${metrics.latency_ms ? `<p style="color: #212529;"><strong>Gecikme:</strong> ${metrics.latency_ms} ms</p>` : ''}
-              ${open_ports.length > 0 ? `<p style="color: #212529;"><strong>Açık Portlar:</strong> ${open_ports.length} port bulundu</p>` : ''}
-              ${os.detected ? `<p style="color: #212529;"><strong>OS Tespiti:</strong> ${os.osclass && os.osclass.length > 0 ? os.osclass[0].name || (typeof t !== 'undefined' ? t('detected') : 'Tespit Edildi') : (typeof t !== 'undefined' ? t('detected') : 'Tespit Edildi')}</p>` : ''}
-              ${metrics.scan_duration_seconds ? `<p style="color: #212529;"><strong>Tarama Süresi:</strong> ${metrics.scan_duration_seconds.toFixed(2)} saniye</p>` : ''}
+              <p style="color: white;"><strong>Durum:</strong> ${norm.status === 'success' ? '✅ Başarılı' : norm.status === 'failed' ? '❌ Başarısız' : '⚠️ Kısmi'}</p>
+              <p style="color: white;"><strong>Hedef:</strong> ${norm.target || (typeof t !== 'undefined' ? t('notAvailable') : 'Yok')}</p>
+              <p style="color: white;"><strong>Host Durumu:</strong> ${metrics.host_status === 'up' ? `✅ ${typeof t !== 'undefined' ? t('up') : 'Açık'}` : metrics.host_status === 'down' ? `❌ ${typeof t !== 'undefined' ? t('down') : 'Kapalı'}` : `❓ ${typeof t !== 'undefined' ? t('unknown') : 'Bilinmiyor'}`}</p>
+              ${metrics.latency_ms ? `<p style="color: white;"><strong>Gecikme:</strong> ${metrics.latency_ms} ms</p>` : ''}
+              ${open_ports.length > 0 ? `<p style="color: white;"><strong>Açık Portlar:</strong> ${open_ports.length} port bulundu</p>` : ''}
+              ${os.detected ? `<p style="color: white;"><strong>OS Tespiti:</strong> ${os.osclass && os.osclass.length > 0 ? os.osclass[0].name || (typeof t !== 'undefined' ? t('detected') : 'Tespit Edildi') : (typeof t !== 'undefined' ? t('detected') : 'Tespit Edildi')}</p>` : ''}
+              ${metrics.scan_duration_seconds ? `<p style="color: white;"><strong>Tarama Süresi:</strong> ${metrics.scan_duration_seconds.toFixed(2)} saniye</p>` : ''}
               ${open_ports.length > 0 ? `
-                <p style="color: #212529; margin-top: 10px;"><strong>Açık Portlar:</strong></p>
+                <p style="color: white; margin-top: 10px;"><strong>Açık Portlar:</strong></p>
                 <table style="width: 100%; border-collapse: collapse; margin-top: 5px;">
                   <thead>
-                    <tr style="background: #e9ecef;">
-                      <th style="padding: 8px; text-align: left; border: 1px solid #dee2e6;">${typeof t !== 'undefined' ? t('port') : 'Port'}</th>
-                      <th style="padding: 8px; text-align: left; border: 1px solid #dee2e6;">${typeof t !== 'undefined' ? t('state') : 'Durum'}</th>
-                      <th style="padding: 8px; text-align: left; border: 1px solid #dee2e6;">${typeof t !== 'undefined' ? t('service') : 'Servis'}</th>
-                      <th style="padding: 8px; text-align: left; border: 1px solid #dee2e6;">${typeof t !== 'undefined' ? t('version') : 'Versiyon'}</th>
+                    <tr style="background: rgba(0, 255, 65, 0.1);">
+                      <th style="padding: 8px; text-align: left; border: 1px solid #dee2e6; color: #00ff41;">${typeof t !== 'undefined' ? t('port') : 'Port'}</th>
+                      <th style="padding: 8px; text-align: left; border: 1px solid #dee2e6; color: #00ff41;">${typeof t !== 'undefined' ? t('state') : 'Durum'}</th>
+                      <th style="padding: 8px; text-align: left; border: 1px solid #dee2e6; color: #00ff41;">${typeof t !== 'undefined' ? t('service') : 'Servis'}</th>
+                      <th style="padding: 8px; text-align: left; border: 1px solid #dee2e6; color: #00ff41;">${typeof t !== 'undefined' ? t('version') : 'Versiyon'}</th>
                     </tr>
                   </thead>
                   <tbody>
                     ${open_ports.map(p => `
                       <tr>
-                        <td style="padding: 8px; border: 1px solid #dee2e6;">${p.port}/${p.protocol || 'tcp'}</td>
-                        <td style="padding: 8px; border: 1px solid #dee2e6;">${p.state}</td>
-                        <td style="padding: 8px; border: 1px solid #dee2e6;">${p.service || (typeof t !== 'undefined' ? t('notAvailable') : 'Yok')}</td>
-                        <td style="padding: 8px; border: 1px solid #dee2e6;">${p.version || p.product || (typeof t !== 'undefined' ? t('notAvailable') : 'Yok')}</td>
+                        <td style="padding: 8px; border: 1px solid #dee2e6; color: white;">${p.port}/${p.protocol || 'tcp'}</td>
+                        <td style="padding: 8px; border: 1px solid #dee2e6; color: white;">${p.state}</td>
+                        <td style="padding: 8px; border: 1px solid #dee2e6; color: white;">${p.service || (typeof t !== 'undefined' ? t('notAvailable') : 'Yok')}</td>
+                        <td style="padding: 8px; border: 1px solid #dee2e6; color: white;">${p.version || p.product || (typeof t !== 'undefined' ? t('notAvailable') : 'Yok')}</td>
                       </tr>
                     `).join('')}
                   </tbody>
                 </table>
               ` : ''}
-              ${norm.findings && norm.findings.length > 0 ? `<p style="color: #212529; margin-top: 10px;"><strong>Bulgular:</strong> ${norm.findings.length} bulgu</p>` : ''}
+              ${norm.findings && norm.findings.length > 0 ? `<p style="color: white; margin-top: 10px;"><strong>Bulgular:</strong> ${norm.findings.length} bulgu</p>` : ''}
               <details style="margin-top: 10px;">
                 <summary>${typeof t !== 'undefined' ? t('rawOutput') : '[HAM ÇIKTI]'}</summary>
-                <pre class="pre-block" style="margin-top: 10px; color: #212529;">${nmap.raw_output || "Çıktı yok"}</pre>
+                <pre class="pre-block" style="margin-top: 10px; color: #c9d1d9;">${nmap.raw_output || "Çıktı yok"}</pre>
               </details>
               <details style="margin-top: 10px;">
                 <summary>${typeof t !== 'undefined' ? t('normalizedJson') : '[NORMALİZE EDİLMİŞ JSON]'}</summary>
@@ -364,7 +431,7 @@ form.addEventListener("submit", async (event) => {
                   <button class="download-json-btn" onclick="window.downloadJSON(${JSON.stringify(JSON.stringify(norm, null, 2))}, '${(norm.target || data.target_url || 'nmap').replace(/[^a-z0-9]/gi, '_').toLowerCase()}-nmap-results.json.txt')">${typeof t !== 'undefined' ? t('downloadJson') : 'JSON İndir'}</button>
                   <button class="download-json-btn" onclick="window.downloadPDF(${JSON.stringify(norm)}, '${(norm.target || data.target_url || 'nmap').replace(/[^a-z0-9]/gi, '_').toLowerCase()}-nmap-results.json.pdf')">${typeof t !== 'undefined' ? t('downloadPdf') : 'PDF İndir'}</button>
                 </div>
-                <pre class="pre-block" style="margin-top: 10px; color: #212529;">${JSON.stringify(norm, null, 2)}</pre>
+                <pre class="pre-block" style="margin-top: 10px; color: #c9d1d9;">${JSON.stringify(norm, null, 2)}</pre>
               </details>
             </div>
           `;
@@ -398,18 +465,18 @@ form.addEventListener("submit", async (event) => {
               return `
             <div class="result-card ${statusClass(norm.status)}">
               <h3>🛡️ ${norm.summary || 'Nikto Sonuçları'}</h3>
-              <p style="color: #212529;"><strong>Durum:</strong> ${norm.status === 'success' ? '✅ Başarılı' : norm.status === 'failed' ? '❌ Başarısız' : '⚠️ Kısmi'}</p>
-              <p style="color: #212529;"><strong>Hedef:</strong> ${norm.target || (typeof t !== 'undefined' ? t('notAvailable') : 'Yok')}</p>
-              ${metrics.target_ip ? `<p style="color: #212529;"><strong>IP Adresi:</strong> ${metrics.target_ip}</p>` : ''}
-              ${metrics.target_hostname ? `<p style="color: #212529;"><strong>${typeof t !== 'undefined' ? t('hostname') : 'Host Adı'}:</strong> ${metrics.target_hostname}</p>` : ''}
-              ${metrics.port ? `<p style="color: #212529;"><strong>${typeof t !== 'undefined' ? t('port') : 'Port'}:</strong> ${metrics.port}</p>` : ''}
-              ${metrics.server ? `<p style="color: #212529;"><strong>${typeof t !== 'undefined' ? t('server') : 'Sunucu'}:</strong> ${metrics.server}</p>` : ''}
-              ${metrics.start_time ? `<p style="color: #212529;"><strong>Başlangıç Zamanı:</strong> ${metrics.start_time}</p>` : ''}
-              ${metrics.duration_ms ? `<p style="color: #212529;"><strong>Süre:</strong> ${(metrics.duration_ms / 1000).toFixed(2)} saniye</p>` : ''}
-              <p style="color: #212529; margin-top: 10px;"><strong>Toplam Bulgu:</strong> ${metrics.total_items || 0}</p>
+              <p style="color: white;"><strong>Durum:</strong> ${norm.status === 'success' ? '✅ Başarılı' : norm.status === 'failed' ? '❌ Başarısız' : '⚠️ Kısmi'}</p>
+              <p style="color: white;"><strong>Hedef:</strong> ${norm.target || (typeof t !== 'undefined' ? t('notAvailable') : 'Yok')}</p>
+              ${metrics.target_ip ? `<p style="color: white;"><strong>IP Adresi:</strong> ${metrics.target_ip}</p>` : ''}
+              ${metrics.target_hostname ? `<p style="color: white;"><strong>${typeof t !== 'undefined' ? t('hostname') : 'Host Adı'}:</strong> ${metrics.target_hostname}</p>` : ''}
+              ${metrics.port ? `<p style="color: white;"><strong>${typeof t !== 'undefined' ? t('port') : 'Port'}:</strong> ${metrics.port}</p>` : ''}
+              ${metrics.server ? `<p style="color: white;"><strong>${typeof t !== 'undefined' ? t('server') : 'Sunucu'}:</strong> ${metrics.server}</p>` : ''}
+              ${metrics.start_time ? `<p style="color: white;"><strong>Başlangıç Zamanı:</strong> ${metrics.start_time}</p>` : ''}
+              ${metrics.duration_ms ? `<p style="color: white;"><strong>Süre:</strong> ${(metrics.duration_ms / 1000).toFixed(2)} saniye</p>` : ''}
+              <p style="color: white; margin-top: 10px;"><strong>Toplam Bulgu:</strong> ${metrics.total_items || 0}</p>
               ${metrics.total_items > 0 ? `
-                <p style="color: #212529;"><strong>Severity Dağılımı:</strong></p>
-                <ul style="color: #212529; margin-left: 20px;">
+                <p style="color: #c9d1d9;"><strong>Severity Dağılımı:</strong></p>
+                <ul style="color: #c9d1d9; margin-left: 20px;">
                   ${severity_counts.CRITICAL > 0 ? `<li style="color: #dc3545;"><strong>CRITICAL:</strong> ${severity_counts.CRITICAL}</li>` : ''}
                   ${severity_counts.HIGH > 0 ? `<li style="color: #fd7e14;"><strong>HIGH:</strong> ${severity_counts.HIGH}</li>` : ''}
                   ${severity_counts.MEDIUM > 0 ? `<li style="color: #ffc107;"><strong>MEDIUM:</strong> ${severity_counts.MEDIUM}</li>` : ''}
@@ -418,29 +485,29 @@ form.addEventListener("submit", async (event) => {
                 </ul>
               ` : ''}
               ${critical_findings.length > 0 ? `
-                <p style="color: #212529; margin-top: 10px;"><strong style="color: #dc3545;">Kritik Bulgular (${critical_findings.length}):</strong></p>
-                <ul style="color: #212529; margin-left: 20px;">
+                <p style="color: #c9d1d9; margin-top: 10px;"><strong style="color: #dc3545;">Kritik Bulgular (${critical_findings.length}):</strong></p>
+                <ul style="color: #c9d1d9; margin-left: 20px;">
                   ${critical_findings.slice(0, 10).map(f => `<li>${f.title}</li>`).join('')}
                   ${critical_findings.length > 10 ? `<li><em>... ve ${critical_findings.length - 10} bulgu daha</em></li>` : ''}
                 </ul>
               ` : ''}
               ${high_findings.length > 0 ? `
-                <p style="color: #212529; margin-top: 10px;"><strong style="color: #fd7e14;">Yüksek Öncelikli Bulgular (${high_findings.length}):</strong></p>
-                <ul style="color: #212529; margin-left: 20px;">
+                <p style="color: #c9d1d9; margin-top: 10px;"><strong style="color: #fd7e14;">Yüksek Öncelikli Bulgular (${high_findings.length}):</strong></p>
+                <ul style="color: #c9d1d9; margin-left: 20px;">
                   ${high_findings.slice(0, 10).map(f => `<li>${f.title}</li>`).join('')}
                   ${high_findings.length > 10 ? `<li><em>... ve ${high_findings.length - 10} bulgu daha</em></li>` : ''}
                 </ul>
               ` : ''}
               ${findings.length > 0 && critical_findings.length === 0 && high_findings.length === 0 ? `
-                <p style="color: #212529; margin-top: 10px;"><strong>Bulgular:</strong></p>
-                <ul style="color: #212529; margin-left: 20px;">
+                <p style="color: #c9d1d9; margin-top: 10px;"><strong>Bulgular:</strong></p>
+                <ul style="color: #c9d1d9; margin-left: 20px;">
                   ${findings.slice(0, 20).map(f => `<li>${f.title}</li>`).join('')}
                   ${findings.length > 20 ? `<li><em>... ve ${findings.length - 20} bulgu daha</em></li>` : ''}
                 </ul>
               ` : ''}
               <details style="margin-top: 10px;">
                 <summary>${typeof t !== 'undefined' ? t('rawOutput') : '[HAM ÇIKTI]'}</summary>
-                <pre class="pre-block" style="margin-top: 10px; color: #212529;">${nikto.raw_output || "Çıktı yok"}</pre>
+                <pre class="pre-block" style="margin-top: 10px; color: #c9d1d9;">${nikto.raw_output || "Çıktı yok"}</pre>
               </details>
               <details style="margin-top: 10px;">
                 <summary>${typeof t !== 'undefined' ? t('normalizedJson') : '[NORMALİZE EDİLMİŞ JSON]'}</summary>
@@ -448,7 +515,7 @@ form.addEventListener("submit", async (event) => {
                   <button class="download-json-btn" onclick="window.downloadJSON(${JSON.stringify(JSON.stringify(norm, null, 2))}, '${(norm.target || data.target_url || 'nikto').replace(/[^a-z0-9]/gi, '_').toLowerCase()}-nikto-results.json.txt')">${typeof t !== 'undefined' ? t('downloadJson') : 'JSON İndir'}</button>
                   <button class="download-json-btn" onclick="window.downloadPDF(${JSON.stringify(norm)}, '${(norm.target || data.target_url || 'nikto').replace(/[^a-z0-9]/gi, '_').toLowerCase()}-nikto-results.json.pdf')">${typeof t !== 'undefined' ? t('downloadPdf') : 'PDF İndir'}</button>
                 </div>
-                <pre class="pre-block" style="margin-top: 10px; color: #212529;">${JSON.stringify(norm, null, 2)}</pre>
+                <pre class="pre-block" style="margin-top: 10px; color: #c9d1d9;">${JSON.stringify(norm, null, 2)}</pre>
               </details>
             </div>
           `;
@@ -509,28 +576,28 @@ form.addEventListener("submit", async (event) => {
               return `
             <div class="result-card ${statusClass(norm.status)}">
               <h3>🔎 ${norm.summary || 'Gobuster Sonuçları'}</h3>
-              <p style="color: #212529;"><strong>Durum:</strong> ${norm.status === 'success' ? '✅ Başarılı' : norm.status === 'failed' ? '❌ Başarısız' : '⚠️ Kısmi'}</p>
-              <p style="color: #212529;"><strong>Hedef:</strong> ${norm.target || (typeof t !== 'undefined' ? t('notAvailable') : 'Yok')}</p>
-              ${metrics.method ? `<p style="color: #212529;"><strong>${typeof t !== 'undefined' ? t('method') : 'Metot'}:</strong> ${metrics.method}</p>` : ''}
-              ${metrics.threads ? `<p style="color: #212529;"><strong>${typeof t !== 'undefined' ? t('threads') : 'İş Parçacığı'}:</strong> ${metrics.threads}</p>` : ''}
-              ${metrics.wordlist ? `<p style="color: #212529;"><strong>${typeof t !== 'undefined' ? t('wordlist') : 'Kelime Listesi'}:</strong> ${metrics.wordlist}</p>` : ''}
-              ${metrics.extensions && metrics.extensions.length > 0 ? `<p style="color: #212529;"><strong>${typeof t !== 'undefined' ? t('extensions') : 'Uzantılar'}:</strong> ${metrics.extensions.join(', ')}</p>` : ''}
-              ${metrics.duration_ms ? `<p style="color: #212529;"><strong>Süre:</strong> ${(metrics.duration_ms / 1000).toFixed(2)} saniye</p>` : ''}
-              <p style="color: #212529; margin-top: 10px;"><strong>Toplam Bulgu:</strong> ${metrics.total_findings || 0}</p>
+              <p style="color: white;"><strong>Durum:</strong> ${norm.status === 'success' ? '✅ Başarılı' : norm.status === 'failed' ? '❌ Başarısız' : '⚠️ Kısmi'}</p>
+              <p style="color: white;"><strong>Hedef:</strong> ${norm.target || (typeof t !== 'undefined' ? t('notAvailable') : 'Yok')}</p>
+              ${metrics.method ? `<p style="color: white;"><strong>${typeof t !== 'undefined' ? t('method') : 'Metot'}:</strong> ${metrics.method}</p>` : ''}
+              ${metrics.threads ? `<p style="color: white;"><strong>${typeof t !== 'undefined' ? t('threads') : 'İş Parçacığı'}:</strong> ${metrics.threads}</p>` : ''}
+              ${metrics.wordlist ? `<p style="color: white;"><strong>${typeof t !== 'undefined' ? t('wordlist') : 'Kelime Listesi'}:</strong> ${metrics.wordlist}</p>` : ''}
+              ${metrics.extensions && metrics.extensions.length > 0 ? `<p style="color: white;"><strong>${typeof t !== 'undefined' ? t('extensions') : 'Uzantılar'}:</strong> ${metrics.extensions.join(', ')}</p>` : ''}
+              ${metrics.duration_ms ? `<p style="color: white;"><strong>Süre:</strong> ${(metrics.duration_ms / 1000).toFixed(2)} saniye</p>` : ''}
+              <p style="color: white; margin-top: 10px;"><strong>Toplam Bulgu:</strong> ${metrics.total_findings || 0}</p>
               ${Object.keys(status_dist).length > 0 ? `
-                <p style="color: #212529;"><strong>Status Dağılımı:</strong></p>
-                <ul style="color: #212529; margin-left: 20px;">
+                <p style="color: #c9d1d9;"><strong>Status Dağılımı:</strong></p>
+                <ul style="color: #c9d1d9; margin-left: 20px;">
                   ${Object.entries(status_dist).sort((a, b) => Number(a[0]) - Number(b[0])).map(([status, count]) => {
-                    const color = status === '200' ? '#28a745' : status === '301' || status === '302' ? '#17a2b8' : status === '401' ? '#ffc107' : status === '403' ? '#6c757d' : '#212529';
+                    const color = status === '200' ? '#28a745' : status === '301' || status === '302' ? '#17a2b8' : status === '401' ? '#ffc107' : status === '403' ? '#6c757d' : '#c9d1d9';
                     return `<li style="color: ${color};"><strong>${status}:</strong> ${count}</li>`;
                   }).join('')}
                 </ul>
               ` : ''}
               ${status_200_findings.length > 0 ? `
-                <p style="color: #212529; margin-top: 10px;"><strong style="color: #28a745;">Erişilebilir Path'ler (200) - ${status_200_findings.length}:</strong></p>
+                <p style="color: #c9d1d9; margin-top: 10px;"><strong style="color: #28a745;">Erişilebilir Path'ler (200) - ${status_200_findings.length}:</strong></p>
                 <table style="width: 100%; border-collapse: collapse; margin-top: 5px;">
                   <thead>
-                    <tr style="background: #e9ecef;">
+                    <tr style="background: rgba(0, 255, 65, 0.1);">
                       <th style="padding: 8px; text-align: left; border: 1px solid #dee2e6;">${typeof t !== 'undefined' ? t('status') : 'Durum'}</th>
                       <th style="padding: 8px; text-align: left; border: 1px solid #dee2e6;">${typeof t !== 'undefined' ? t('url') : 'URL'}</th>
                       <th style="padding: 8px; text-align: left; border: 1px solid #dee2e6;">${typeof t !== 'undefined' ? t('size') : 'Boyut'}</th>
@@ -548,10 +615,10 @@ form.addEventListener("submit", async (event) => {
                 </table>
               ` : ''}
               ${status_301_findings.length > 0 ? `
-                <p style="color: #212529; margin-top: 10px;"><strong style="color: #17a2b8;">Redirect'ler (301/302) - ${status_301_findings.length}:</strong></p>
+                <p style="color: #c9d1d9; margin-top: 10px;"><strong style="color: #17a2b8;">Redirect'ler (301/302) - ${status_301_findings.length}:</strong></p>
                 <table style="width: 100%; border-collapse: collapse; margin-top: 5px;">
                   <thead>
-                    <tr style="background: #e9ecef;">
+                    <tr style="background: rgba(0, 255, 65, 0.1);">
                       <th style="padding: 8px; text-align: left; border: 1px solid #dee2e6;">${typeof t !== 'undefined' ? t('status') : 'Durum'}</th>
                       <th style="padding: 8px; text-align: left; border: 1px solid #dee2e6;">${typeof t !== 'undefined' ? t('url') : 'URL'}</th>
                       <th style="padding: 8px; text-align: left; border: 1px solid #dee2e6;">${typeof t !== 'undefined' ? t('redirect') : 'Yönlendirme'}</th>
@@ -569,33 +636,33 @@ form.addEventListener("submit", async (event) => {
                 </table>
               ` : ''}
               ${status_401_findings.length > 0 ? `
-                <p style="color: #212529; margin-top: 10px;"><strong style="color: #ffc107;">Authentication Gerektiren (401) - ${status_401_findings.length}:</strong></p>
-                <ul style="color: #212529; margin-left: 20px;">
+                <p style="color: #c9d1d9; margin-top: 10px;"><strong style="color: #ffc107;">Authentication Gerektiren (401) - ${status_401_findings.length}:</strong></p>
+                <ul style="color: #c9d1d9; margin-left: 20px;">
                   ${status_401_findings.map(f => `<li>${f.evidence.url}</li>`).join('')}
                 </ul>
               ` : ''}
               ${status_403_findings.length > 0 && status_403_findings.length <= 20 ? `
-                <p style="color: #212529; margin-top: 10px;"><strong style="color: #6c757d;">Forbidden (403) - ${status_403_findings.length}:</strong></p>
-                <ul style="color: #212529; margin-left: 20px;">
+                <p style="color: #c9d1d9; margin-top: 10px;"><strong style="color: #6c757d;">Forbidden (403) - ${status_403_findings.length}:</strong></p>
+                <ul style="color: #c9d1d9; margin-left: 20px;">
                   ${status_403_findings.map(f => `<li>${f.evidence.url}</li>`).join('')}
                 </ul>
               ` : status_403_findings.length > 20 ? `
-                <p style="color: #212529; margin-top: 10px;"><strong style="color: #6c757d;">Forbidden (403) - ${status_403_findings.length} bulgu (ilk 20):</strong></p>
-                <ul style="color: #212529; margin-left: 20px;">
+                <p style="color: #c9d1d9; margin-top: 10px;"><strong style="color: #6c757d;">Forbidden (403) - ${status_403_findings.length} bulgu (ilk 20):</strong></p>
+                <ul style="color: #c9d1d9; margin-left: 20px;">
                   ${status_403_findings.slice(0, 20).map(f => `<li>${f.evidence.url}</li>`).join('')}
                   <li><em>... ve ${status_403_findings.length - 20} bulgu daha</em></li>
                 </ul>
               ` : ''}
               ${other_findings.length > 0 ? `
-                <p style="color: #212529; margin-top: 10px;"><strong>Diğer Bulgular (${other_findings.length}):</strong></p>
-                <ul style="color: #212529; margin-left: 20px;">
+                <p style="color: #c9d1d9; margin-top: 10px;"><strong>Diğer Bulgular (${other_findings.length}):</strong></p>
+                <ul style="color: #c9d1d9; margin-left: 20px;">
                   ${other_findings.slice(0, 20).map(f => `<li>${f.evidence.status} - ${f.evidence.url}</li>`).join('')}
                   ${other_findings.length > 20 ? `<li><em>... ve ${other_findings.length - 20} bulgu daha</em></li>` : ''}
                 </ul>
               ` : ''}
               <details style="margin-top: 10px;">
                 <summary>${typeof t !== 'undefined' ? t('rawOutput') : '[HAM ÇIKTI]'}</summary>
-                <pre class="pre-block" style="margin-top: 10px; color: #212529;">${gobuster.raw_output || "Çıktı yok"}</pre>
+                <pre class="pre-block" style="margin-top: 10px; color: #c9d1d9;">${gobuster.raw_output || "Çıktı yok"}</pre>
               </details>
               <details style="margin-top: 10px;">
                 <summary>${typeof t !== 'undefined' ? t('normalizedJson') : '[NORMALİZE EDİLMİŞ JSON]'}</summary>
@@ -603,7 +670,7 @@ form.addEventListener("submit", async (event) => {
                   <button class="download-json-btn" onclick="window.downloadJSON(${JSON.stringify(JSON.stringify(norm, null, 2))}, '${(norm.target || data.target_url || 'gobuster').replace(/[^a-z0-9]/gi, '_').toLowerCase()}-gobuster-results.json.txt')">${typeof t !== 'undefined' ? t('downloadJson') : 'JSON İndir'}</button>
                   <button class="download-json-btn" onclick="window.downloadPDF(${JSON.stringify(norm)}, '${(norm.target || data.target_url || 'gobuster').replace(/[^a-z0-9]/gi, '_').toLowerCase()}-gobuster-results.json.pdf')">${typeof t !== 'undefined' ? t('downloadPdf') : 'PDF İndir'}</button>
                 </div>
-                <pre class="pre-block" style="margin-top: 10px; color: #212529;">${JSON.stringify(norm, null, 2)}</pre>
+                <pre class="pre-block" style="margin-top: 10px; color: #c9d1d9;">${JSON.stringify(norm, null, 2)}</pre>
               </details>
             </div>
           `;
@@ -637,12 +704,12 @@ form.addEventListener("submit", async (event) => {
               return `
             <div class="result-card ${statusClass(norm.status)}">
               <h3>⚡ ${norm.summary || 'ZAP Sonuçları'}</h3>
-              <p style="color: #212529;"><strong>Durum:</strong> ${norm.status === 'success' ? '✅ Başarılı' : norm.status === 'failed' ? '❌ Başarısız' : '⚠️ Kısmi'}</p>
-              <p style="color: #212529;"><strong>Hedef:</strong> ${norm.target || (typeof t !== 'undefined' ? t('notAvailable') : 'Yok')}</p>
-              ${metrics.zap_version ? `<p style="color: #212529;"><strong>ZAP Versiyonu:</strong> ${metrics.zap_version}</p>` : ''}
-              ${metrics.scan_date ? `<p style="color: #212529;"><strong>Tarama Tarihi:</strong> ${metrics.scan_date}</p>` : ''}
-              ${metrics.duration_ms ? `<p style="color: #212529;"><strong>Süre:</strong> ${(metrics.duration_ms / 1000).toFixed(2)} saniye</p>` : ''}
-              <p style="color: #212529; margin-top: 10px;"><strong>Risk Özeti:</strong></p>
+              <p style="color: white;"><strong>Durum:</strong> ${norm.status === 'success' ? '✅ Başarılı' : norm.status === 'failed' ? '❌ Başarısız' : '⚠️ Kısmi'}</p>
+              <p style="color: white;"><strong>Hedef:</strong> ${norm.target || (typeof t !== 'undefined' ? t('notAvailable') : 'Yok')}</p>
+              ${metrics.zap_version ? `<p style="color: white;"><strong>ZAP Versiyonu:</strong> ${metrics.zap_version}</p>` : ''}
+              ${metrics.scan_date ? `<p style="color: white;"><strong>Tarama Tarihi:</strong> ${metrics.scan_date}</p>` : ''}
+              ${metrics.duration_ms ? `<p style="color: white;"><strong>Süre:</strong> ${(metrics.duration_ms / 1000).toFixed(2)} saniye</p>` : ''}
+              <p style="color: white; margin-top: 10px;"><strong>Risk Özeti:</strong></p>
               <table style="width: 100%; border-collapse: collapse; margin-top: 5px;">
                 <thead>
                   <tr style="background: #e9ecef;">
@@ -684,51 +751,51 @@ form.addEventListener("submit", async (event) => {
                 </tbody>
               </table>
               ${high_findings.length > 0 ? `
-                <p style="color: #212529; margin-top: 15px;"><strong style="color: #dc3545;">🔴 Yüksek Öncelikli Bulgular (${high_findings.length}):</strong></p>
+                <p style="color: #c9d1d9; margin-top: 15px;"><strong style="color: #dc3545;">🔴 Yüksek Öncelikli Bulgular (${high_findings.length}):</strong></p>
                 ${high_findings.map(f => `
                   <div style="background: #f8d7da; padding: 10px; margin: 5px 0; border-left: 4px solid #dc3545; border-radius: 3px;">
                     <p style="margin: 0; font-weight: bold; color: #721c24;">${f.title}</p>
-                    ${f.evidence.description ? `<p style="margin: 5px 0 0 0; color: #212529; font-size: 0.9em;">${f.evidence.description.substring(0, 200)}${f.evidence.description.length > 200 ? '...' : ''}</p>` : ''}
+                    ${f.evidence.description ? `<p style="margin: 5px 0 0 0; color: #c9d1d9; font-size: 0.9em;">${f.evidence.description.substring(0, 200)}${f.evidence.description.length > 200 ? '...' : ''}</p>` : ''}
                     ${f.evidence.urls && f.evidence.urls.length > 0 ? `
-                      <p style="margin: 5px 0 0 0; color: #212529; font-size: 0.85em;"><strong>Etkilenen URL'ler:</strong> ${f.evidence.urls.length} adet</p>
+                      <p style="margin: 5px 0 0 0; color: #c9d1d9; font-size: 0.85em;"><strong>Etkilenen URL'ler:</strong> ${f.evidence.urls.length} adet</p>
                     ` : ''}
-                    ${f.evidence.solution ? `<p style="margin: 5px 0 0 0; color: #212529; font-size: 0.85em;"><strong>Çözüm:</strong> ${f.evidence.solution.substring(0, 150)}${f.evidence.solution.length > 150 ? '...' : ''}</p>` : ''}
+                    ${f.evidence.solution ? `<p style="margin: 5px 0 0 0; color: #c9d1d9; font-size: 0.85em;"><strong>Çözüm:</strong> ${f.evidence.solution.substring(0, 150)}${f.evidence.solution.length > 150 ? '...' : ''}</p>` : ''}
                   </div>
                 `).join('')}
               ` : ''}
               ${medium_findings.length > 0 ? `
-                <p style="color: #212529; margin-top: 15px;"><strong style="color: #856404;">🟡 Orta Öncelikli Bulgular (${medium_findings.length}):</strong></p>
+                <p style="color: #c9d1d9; margin-top: 15px;"><strong style="color: #856404;">🟡 Orta Öncelikli Bulgular (${medium_findings.length}):</strong></p>
                 ${medium_findings.map(f => `
                   <div style="background: #fff3cd; padding: 10px; margin: 5px 0; border-left: 4px solid #ffc107; border-radius: 3px;">
                     <p style="margin: 0; font-weight: bold; color: #856404;">${f.title}</p>
-                    ${f.evidence.description ? `<p style="margin: 5px 0 0 0; color: #212529; font-size: 0.9em;">${f.evidence.description.substring(0, 200)}${f.evidence.description.length > 200 ? '...' : ''}</p>` : ''}
+                    ${f.evidence.description ? `<p style="margin: 5px 0 0 0; color: #c9d1d9; font-size: 0.9em;">${f.evidence.description.substring(0, 200)}${f.evidence.description.length > 200 ? '...' : ''}</p>` : ''}
                     ${f.evidence.urls && f.evidence.urls.length > 0 ? `
-                      <p style="margin: 5px 0 0 0; color: #212529; font-size: 0.85em;"><strong>Etkilenen URL'ler:</strong> ${f.evidence.urls.length} adet</p>
+                      <p style="margin: 5px 0 0 0; color: #c9d1d9; font-size: 0.85em;"><strong>Etkilenen URL'ler:</strong> ${f.evidence.urls.length} adet</p>
                     ` : ''}
-                    ${f.evidence.solution ? `<p style="margin: 5px 0 0 0; color: #212529; font-size: 0.85em;"><strong>Çözüm:</strong> ${f.evidence.solution.substring(0, 150)}${f.evidence.solution.length > 150 ? '...' : ''}</p>` : ''}
+                    ${f.evidence.solution ? `<p style="margin: 5px 0 0 0; color: #c9d1d9; font-size: 0.85em;"><strong>Çözüm:</strong> ${f.evidence.solution.substring(0, 150)}${f.evidence.solution.length > 150 ? '...' : ''}</p>` : ''}
                   </div>
                 `).join('')}
               ` : ''}
               ${low_findings.length > 0 ? `
-                <p style="color: #212529; margin-top: 15px;"><strong style="color: #856404;">🟡 Düşük Öncelikli Bulgular (${low_findings.length}):</strong></p>
+                <p style="color: #c9d1d9; margin-top: 15px;"><strong style="color: #856404;">🟡 Düşük Öncelikli Bulgular (${low_findings.length}):</strong></p>
                 ${low_findings.slice(0, 5).map(f => `
                   <div style="background: #fff3cd; padding: 8px; margin: 3px 0; border-left: 3px solid #ffc107; border-radius: 3px;">
                     <p style="margin: 0; font-weight: bold; color: #856404; font-size: 0.95em;">${f.title}</p>
-                    ${f.evidence.description ? `<p style="margin: 3px 0 0 0; color: #212529; font-size: 0.85em;">${f.evidence.description.substring(0, 150)}${f.evidence.description.length > 150 ? '...' : ''}</p>` : ''}
+                    ${f.evidence.description ? `<p style="margin: 3px 0 0 0; color: #c9d1d9; font-size: 0.85em;">${f.evidence.description.substring(0, 150)}${f.evidence.description.length > 150 ? '...' : ''}</p>` : ''}
                   </div>
                 `).join('')}
-                ${low_findings.length > 5 ? `<p style="color: #212529; margin-top: 5px; font-size: 0.9em;"><em>... ve ${low_findings.length - 5} düşük öncelikli bulgu daha</em></p>` : ''}
+                ${low_findings.length > 5 ? `<p style="color: #c9d1d9; margin-top: 5px; font-size: 0.9em;"><em>... ve ${low_findings.length - 5} düşük öncelikli bulgu daha</em></p>` : ''}
               ` : ''}
               ${info_findings.length > 0 ? `
-                <p style="color: #212529; margin-top: 15px;"><strong style="color: #0c5460;">ℹ️ Bilgilendirme Bulguları (${info_findings.length}):</strong></p>
-                <ul style="color: #212529; margin-left: 20px;">
+                <p style="color: #c9d1d9; margin-top: 15px;"><strong style="color: #0c5460;">ℹ️ Bilgilendirme Bulguları (${info_findings.length}):</strong></p>
+                <ul style="color: #c9d1d9; margin-left: 20px;">
                   ${info_findings.slice(0, 10).map(f => `<li>${f.title}</li>`).join('')}
                   ${info_findings.length > 10 ? `<li><em>... ve ${info_findings.length - 10} bilgilendirme daha</em></li>` : ''}
                 </ul>
               ` : ''}
               <details style="margin-top: 10px;">
                 <summary>${typeof t !== 'undefined' ? t('rawOutput') : '[HAM ÇIKTI]'}</summary>
-                <pre class="pre-block" style="margin-top: 10px; color: #212529;">${zap.raw_output || "Çıktı yok"}</pre>
+                <pre class="pre-block" style="margin-top: 10px; color: #c9d1d9;">${zap.raw_output || "Çıktı yok"}</pre>
               </details>
               <details style="margin-top: 10px;">
                 <summary>${typeof t !== 'undefined' ? t('normalizedJson') : '[NORMALİZE EDİLMİŞ JSON]'}</summary>
@@ -736,7 +803,7 @@ form.addEventListener("submit", async (event) => {
                   <button class="download-json-btn" onclick="window.downloadJSON(${JSON.stringify(JSON.stringify(norm, null, 2))}, '${(norm.target || data.target_url || 'zap').replace(/[^a-z0-9]/gi, '_').toLowerCase()}-zap-results.json.txt')">${typeof t !== 'undefined' ? t('downloadJson') : 'JSON İndir'}</button>
                   <button class="download-json-btn" onclick="window.downloadPDF(${JSON.stringify(norm)}, '${(norm.target || data.target_url || 'zap').replace(/[^a-z0-9]/gi, '_').toLowerCase()}-zap-results.json.pdf')">${typeof t !== 'undefined' ? t('downloadPdf') : 'PDF İndir'}</button>
                 </div>
-                <pre class="pre-block" style="margin-top: 10px; color: #212529;">${JSON.stringify(norm, null, 2)}</pre>
+                <pre class="pre-block" style="margin-top: 10px; color: #c9d1d9;">${JSON.stringify(norm, null, 2)}</pre>
               </details>
             </div>
           `;
@@ -773,29 +840,29 @@ form.addEventListener("submit", async (event) => {
               return `
             <div class="result-card ${statusClass(norm.status)}">
               <h3>🔒 ${norm.summary || 'testssl.sh Sonuçları'}</h3>
-              <p style="color: #212529;"><strong>Durum:</strong> ${norm.status === 'success' ? '✅ Başarılı' : norm.status === 'failed' ? '❌ Başarısız' : '⚠️ Kısmi'}</p>
-              <p style="color: #212529;"><strong>Hedef:</strong> ${norm.target || (typeof t !== 'undefined' ? t('notAvailable') : 'Yok')}</p>
-              ${metrics.hostname ? `<p style="color: #212529;"><strong>Hostname:</strong> ${metrics.hostname}</p>` : ''}
-              ${metrics.ip ? `<p style="color: #212529;"><strong>IP:</strong> ${metrics.ip}</p>` : ''}
-              ${metrics.port ? `<p style="color: #212529;"><strong>Port:</strong> ${metrics.port}</p>` : ''}
-              ${metrics.duration_ms ? `<p style="color: #212529;"><strong>Süre:</strong> ${(metrics.duration_ms / 1000).toFixed(2)} saniye</p>` : ''}
+              <p style="color: white;"><strong>Durum:</strong> ${norm.status === 'success' ? '✅ Başarılı' : norm.status === 'failed' ? '❌ Başarısız' : '⚠️ Kısmi'}</p>
+              <p style="color: white;"><strong>Hedef:</strong> ${norm.target || (typeof t !== 'undefined' ? t('notAvailable') : 'Yok')}</p>
+              ${metrics.hostname ? `<p style="color: white;"><strong>Hostname:</strong> ${metrics.hostname}</p>` : ''}
+              ${metrics.ip ? `<p style="color: white;"><strong>IP:</strong> ${metrics.ip}</p>` : ''}
+              ${metrics.port ? `<p style="color: white;"><strong>Port:</strong> ${metrics.port}</p>` : ''}
+              ${metrics.duration_ms ? `<p style="color: white;"><strong>Süre:</strong> ${(metrics.duration_ms / 1000).toFixed(2)} saniye</p>` : ''}
               ${rating.grade ? `
-                <p style="color: #212529; margin-top: 10px;"><strong>Rating:</strong> 
+                <p style="color: #c9d1d9; margin-top: 10px;"><strong>Rating:</strong> 
                   <span style="font-size: 1.2em; font-weight: bold; color: ${rating.grade === 'A' ? '#28a745' : rating.grade === 'B' ? '#17a2b8' : rating.grade === 'C' ? '#ffc107' : '#dc3545'};">
                     ${rating.grade}
                   </span>
                   ${rating.score ? ` (Score: ${rating.score})` : ''}
                 </p>
                 ${rating.grade_cap_reasons && rating.grade_cap_reasons.length > 0 ? `
-                  <p style="color: #212529;"><strong>Grade Cap Reasons:</strong></p>
-                  <ul style="color: #212529; margin-left: 20px;">
+                  <p style="color: #c9d1d9;"><strong>Grade Cap Reasons:</strong></p>
+                  <ul style="color: #c9d1d9; margin-left: 20px;">
                     ${rating.grade_cap_reasons.map(r => `<li>${r}</li>`).join('')}
                   </ul>
                 ` : ''}
               ` : ''}
               ${Object.keys(protocols).length > 0 ? `
-                <p style="color: #212529; margin-top: 10px;"><strong>Protocol Support:</strong></p>
-                <ul style="color: #212529; margin-left: 20px;">
+                <p style="color: #c9d1d9; margin-top: 10px;"><strong>Protocol Support:</strong></p>
+                <ul style="color: #c9d1d9; margin-left: 20px;">
                   ${Object.entries(protocols).map(([proto, status]) => {
                     const color = status.includes('OK') ? '#28a745' : status.includes('deprecated') ? '#ffc107' : '#6c757d';
                     return `<li style="color: ${color};">${proto}: ${status}</li>`;
@@ -803,8 +870,8 @@ form.addEventListener("submit", async (event) => {
                 </ul>
               ` : ''}
               ${certificate.cn ? `
-                <p style="color: #212529; margin-top: 10px;"><strong>Certificate:</strong></p>
-                <ul style="color: #212529; margin-left: 20px;">
+                <p style="color: #c9d1d9; margin-top: 10px;"><strong>Certificate:</strong></p>
+                <ul style="color: #c9d1d9; margin-left: 20px;">
                   <li><strong>CN:</strong> ${certificate.cn}</li>
                   ${certificate.issuer ? `<li><strong>Issuer:</strong> ${certificate.issuer}</li>` : ''}
                   ${certificate.validity_days ? `<li><strong>Validity:</strong> ${certificate.validity_days} days</li>` : ''}
@@ -813,8 +880,8 @@ form.addEventListener("submit", async (event) => {
                 </ul>
               ` : ''}
               ${http_headers.hsts ? `
-                <p style="color: #212529; margin-top: 10px;"><strong>HTTP Headers:</strong></p>
-                <ul style="color: #212529; margin-left: 20px;">
+                <p style="color: #c9d1d9; margin-top: 10px;"><strong>HTTP Headers:</strong></p>
+                <ul style="color: #c9d1d9; margin-left: 20px;">
                   <li><strong>HSTS:</strong> ${http_headers.hsts}</li>
                   ${http_headers.security_headers && http_headers.security_headers.length > 0 ? `
                     ${http_headers.security_headers.slice(0, 5).map(h => `<li>${h.name}: ${h.value.substring(0, 50)}${h.value.length > 50 ? '...' : ''}</li>`).join('')}
@@ -822,27 +889,27 @@ form.addEventListener("submit", async (event) => {
                 </ul>
               ` : ''}
               ${critical_findings.length > 0 ? `
-                <p style="color: #212529; margin-top: 10px;"><strong style="color: #dc3545;">Kritik Bulgular (${critical_findings.length}):</strong></p>
-                <ul style="color: #212529; margin-left: 20px;">
+                <p style="color: #c9d1d9; margin-top: 10px;"><strong style="color: #dc3545;">Kritik Bulgular (${critical_findings.length}):</strong></p>
+                <ul style="color: #c9d1d9; margin-left: 20px;">
                   ${critical_findings.map(f => `<li style="color: #dc3545;">${f.title}</li>`).join('')}
                 </ul>
               ` : ''}
               ${high_findings.length > 0 ? `
-                <p style="color: #212529; margin-top: 10px;"><strong style="color: #ffc107;">Yüksek Öncelikli Bulgular (${high_findings.length}):</strong></p>
-                <ul style="color: #212529; margin-left: 20px;">
+                <p style="color: #c9d1d9; margin-top: 10px;"><strong style="color: #ffc107;">Yüksek Öncelikli Bulgular (${high_findings.length}):</strong></p>
+                <ul style="color: #c9d1d9; margin-left: 20px;">
                   ${high_findings.map(f => `<li style="color: #ffc107;">${f.title}</li>`).join('')}
                 </ul>
               ` : ''}
               ${medium_findings.length > 0 ? `
-                <p style="color: #212529; margin-top: 10px;"><strong style="color: #17a2b8;">Orta Öncelikli Bulgular (${medium_findings.length}):</strong></p>
-                <ul style="color: #212529; margin-left: 20px;">
+                <p style="color: #c9d1d9; margin-top: 10px;"><strong style="color: #17a2b8;">Orta Öncelikli Bulgular (${medium_findings.length}):</strong></p>
+                <ul style="color: #c9d1d9; margin-left: 20px;">
                   ${medium_findings.slice(0, 10).map(f => `<li>${f.title}</li>`).join('')}
                   ${medium_findings.length > 10 ? `<li><em>... ve ${medium_findings.length - 10} bulgu daha</em></li>` : ''}
                 </ul>
               ` : ''}
               ${Object.keys(vulnerabilities).length > 0 ? `
-                <p style="color: #212529; margin-top: 10px;"><strong>Vulnerability Checks:</strong></p>
-                <ul style="color: #212529; margin-left: 20px;">
+                <p style="color: #c9d1d9; margin-top: 10px;"><strong>Vulnerability Checks:</strong></p>
+                <ul style="color: #c9d1d9; margin-left: 20px;">
                   ${Object.entries(vulnerabilities).slice(0, 10).map(([vuln, status]) => {
                     const color = status.includes('VULNERABLE') ? '#dc3545' : status.includes('not vulnerable') ? '#28a745' : '#6c757d';
                     return `<li style="color: ${color};">${vuln}: ${status}</li>`;
@@ -852,7 +919,7 @@ form.addEventListener("submit", async (event) => {
               ` : ''}
               <details style="margin-top: 10px;">
                 <summary>${typeof t !== 'undefined' ? t('rawOutput') : '[HAM ÇIKTI]'}</summary>
-                <pre class="pre-block" style="margin-top: 10px; color: #212529;">${testssl.raw_output || "Çıktı yok"}</pre>
+                <pre class="pre-block" style="margin-top: 10px; color: #c9d1d9;">${testssl.raw_output || "Çıktı yok"}</pre>
               </details>
               <details style="margin-top: 10px;">
                 <summary>${typeof t !== 'undefined' ? t('normalizedJson') : '[NORMALİZE EDİLMİŞ JSON]'}</summary>
@@ -860,7 +927,7 @@ form.addEventListener("submit", async (event) => {
                   <button class="download-json-btn" onclick="window.downloadJSON(${JSON.stringify(JSON.stringify(norm, null, 2))}, '${(norm.target || data.target_url || 'testssl').replace(/[^a-z0-9]/gi, '_').toLowerCase()}-testssl-results.json.txt')">${typeof t !== 'undefined' ? t('downloadJson') : 'JSON İndir'}</button>
                   <button class="download-json-btn" onclick="window.downloadPDF(${JSON.stringify(norm)}, '${(norm.target || data.target_url || 'testssl').replace(/[^a-z0-9]/gi, '_').toLowerCase()}-testssl-results.json.pdf')">${typeof t !== 'undefined' ? t('downloadPdf') : 'PDF İndir'}</button>
                 </div>
-                <pre class="pre-block" style="margin-top: 10px; color: #212529;">${JSON.stringify(norm, null, 2)}</pre>
+                <pre class="pre-block" style="margin-top: 10px; color: #c9d1d9;">${JSON.stringify(norm, null, 2)}</pre>
               </details>
             </div>
           `;
@@ -896,71 +963,71 @@ form.addEventListener("submit", async (event) => {
               return `
             <div class="result-card ${statusClass(norm.status)}">
               <h3>🌐 ${norm.summary || 'dnsrecon Sonuçları'}</h3>
-              <p style="color: #212529;"><strong>Durum:</strong> ${norm.status === 'success' ? '✅ Başarılı' : norm.status === 'failed' ? '❌ Başarısız' : '⚠️ Kısmi'}</p>
-              <p style="color: #212529;"><strong>Hedef:</strong> ${norm.target || (typeof t !== 'undefined' ? t('notAvailable') : 'Yok')}</p>
-              ${metrics.duration_ms ? `<p style="color: #212529;"><strong>Süre:</strong> ${(metrics.duration_ms / 1000).toFixed(2)} saniye</p>` : ''}
-              <p style="color: #212529; margin-top: 10px;"><strong>Toplam DNS Kayıtları:</strong> ${metrics.total_records || 0}</p>
+              <p style="color: white;"><strong>Durum:</strong> ${norm.status === 'success' ? '✅ Başarılı' : norm.status === 'failed' ? '❌ Başarısız' : '⚠️ Kısmi'}</p>
+              <p style="color: white;"><strong>Hedef:</strong> ${norm.target || (typeof t !== 'undefined' ? t('notAvailable') : 'Yok')}</p>
+              ${metrics.duration_ms ? `<p style="color: white;"><strong>Süre:</strong> ${(metrics.duration_ms / 1000).toFixed(2)} saniye</p>` : ''}
+              <p style="color: white; margin-top: 10px;"><strong>Toplam DNS Kayıtları:</strong> ${metrics.total_records || 0}</p>
               ${metrics.dnssec_configured === false ? `
-                <p style="color: #212529; margin-top: 10px;"><strong style="color: #ffc107;">DNSSEC:</strong> <span style="color: #ffc107;">Not configured</span></p>
+                <p style="color: #c9d1d9; margin-top: 10px;"><strong style="color: #ffc107;">DNSSEC:</strong> <span style="color: #ffc107;">Not configured</span></p>
               ` : metrics.dnssec_configured === true ? `
-                <p style="color: #212529; margin-top: 10px;"><strong style="color: #28a745;">DNSSEC:</strong> <span style="color: #28a745;">Configured</span></p>
+                <p style="color: #c9d1d9; margin-top: 10px;"><strong style="color: #28a745;">DNSSEC:</strong> <span style="color: #28a745;">Configured</span></p>
               ` : ''}
               ${Object.keys(record_types).some(k => record_types[k] > 0) ? `
-                <p style="color: #212529; margin-top: 10px;"><strong>DNS Kayıt Türleri:</strong></p>
-                <ul style="color: #212529; margin-left: 20px;">
+                <p style="color: #c9d1d9; margin-top: 10px;"><strong>DNS Kayıt Türleri:</strong></p>
+                <ul style="color: #c9d1d9; margin-left: 20px;">
                   ${Object.entries(record_types).filter(([k, v]) => v > 0).map(([type, count]) => `<li><strong>${type}:</strong> ${count}</li>`).join('')}
                 </ul>
               ` : ''}
               ${name_servers.length > 0 ? `
-                <p style="color: #212529; margin-top: 10px;"><strong>Name Servers (${name_servers.length}):</strong></p>
-                <ul style="color: #212529; margin-left: 20px;">
+                <p style="color: #c9d1d9; margin-top: 10px;"><strong>Name Servers (${name_servers.length}):</strong></p>
+                <ul style="color: #c9d1d9; margin-left: 20px;">
                   ${name_servers.map(ns => `<li>${ns.hostname} ${ns.ip ? `(${ns.ip})` : ''}</li>`).join('')}
                 </ul>
               ` : ''}
               ${mail_servers.length > 0 ? `
-                <p style="color: #212529; margin-top: 10px;"><strong>Mail Servers (${mail_servers.length}):</strong></p>
-                <ul style="color: #212529; margin-left: 20px;">
+                <p style="color: #c9d1d9; margin-top: 10px;"><strong>Mail Servers (${mail_servers.length}):</strong></p>
+                <ul style="color: #c9d1d9; margin-left: 20px;">
                   ${mail_servers.map(mx => `<li>${mx.hostname} ${mx.ip ? `(${mx.ip})` : ''}</li>`).join('')}
                 </ul>
               ` : ''}
               ${address_records.length > 0 ? `
-                <p style="color: #212529; margin-top: 10px;"><strong>Address Records (${address_records.length}):</strong></p>
-                <ul style="color: #212529; margin-left: 20px;">
+                <p style="color: #c9d1d9; margin-top: 10px;"><strong>Address Records (${address_records.length}):</strong></p>
+                <ul style="color: #c9d1d9; margin-left: 20px;">
                   ${address_records.slice(0, 10).map(a => `<li>${a.hostname} → ${a.ip} (${a.type})</li>`).join('')}
                   ${address_records.length > 10 ? `<li><em>... ve ${address_records.length - 10} kayıt daha</em></li>` : ''}
                 </ul>
               ` : ''}
               ${txt_records.spf ? `
-                <p style="color: #212529; margin-top: 10px;"><strong style="color: #17a2b8;">SPF Record:</strong></p>
-                <p style="color: #212529; margin-left: 20px; font-family: monospace; font-size: 0.9em;">${txt_records.spf.substring(0, 150)}${txt_records.spf.length > 150 ? '...' : ''}</p>
+                <p style="color: #c9d1d9; margin-top: 10px;"><strong style="color: #17a2b8;">SPF Record:</strong></p>
+                <p style="color: #c9d1d9; margin-left: 20px; font-family: monospace; font-size: 0.9em;">${txt_records.spf.substring(0, 150)}${txt_records.spf.length > 150 ? '...' : ''}</p>
               ` : ''}
               ${txt_records.dmarc ? `
-                <p style="color: #212529; margin-top: 10px;"><strong style="color: #17a2b8;">DMARC Record:</strong></p>
-                <p style="color: #212529; margin-left: 20px; font-family: monospace; font-size: 0.9em;">${txt_records.dmarc.substring(0, 150)}${txt_records.dmarc.length > 150 ? '...' : ''}</p>
+                <p style="color: #c9d1d9; margin-top: 10px;"><strong style="color: #17a2b8;">DMARC Record:</strong></p>
+                <p style="color: #c9d1d9; margin-left: 20px; font-family: monospace; font-size: 0.9em;">${txt_records.dmarc.substring(0, 150)}${txt_records.dmarc.length > 150 ? '...' : ''}</p>
               ` : ''}
               ${txt_records.verifications && txt_records.verifications.length > 0 ? `
-                <p style="color: #212529; margin-top: 10px;"><strong>Verification Records (${txt_records.verifications.length}):</strong></p>
-                <ul style="color: #212529; margin-left: 20px;">
+                <p style="color: #c9d1d9; margin-top: 10px;"><strong>Verification Records (${txt_records.verifications.length}):</strong></p>
+                <ul style="color: #c9d1d9; margin-left: 20px;">
                   ${txt_records.verifications.slice(0, 5).map(v => `<li style="font-family: monospace; font-size: 0.9em;">${v.substring(0, 100)}${v.length > 100 ? '...' : ''}</li>`).join('')}
                   ${txt_records.verifications.length > 5 ? `<li><em>... ve ${txt_records.verifications.length - 5} kayıt daha</em></li>` : ''}
                 </ul>
               ` : ''}
               ${medium_findings.length > 0 ? `
-                <p style="color: #212529; margin-top: 10px;"><strong style="color: #ffc107;">Orta Öncelikli Bulgular (${medium_findings.length}):</strong></p>
-                <ul style="color: #212529; margin-left: 20px;">
+                <p style="color: #c9d1d9; margin-top: 10px;"><strong style="color: #ffc107;">Orta Öncelikli Bulgular (${medium_findings.length}):</strong></p>
+                <ul style="color: #c9d1d9; margin-left: 20px;">
                   ${medium_findings.map(f => `<li style="color: #ffc107;">${f.title}</li>`).join('')}
                 </ul>
               ` : ''}
               ${low_findings.length > 0 ? `
-                <p style="color: #212529; margin-top: 10px;"><strong style="color: #17a2b8;">Düşük Öncelikli Bulgular (${low_findings.length}):</strong></p>
-                <ul style="color: #212529; margin-left: 20px;">
+                <p style="color: #c9d1d9; margin-top: 10px;"><strong style="color: #17a2b8;">Düşük Öncelikli Bulgular (${low_findings.length}):</strong></p>
+                <ul style="color: #c9d1d9; margin-left: 20px;">
                   ${low_findings.slice(0, 5).map(f => `<li>${f.title}</li>`).join('')}
                   ${low_findings.length > 5 ? `<li><em>... ve ${low_findings.length - 5} bulgu daha</em></li>` : ''}
                 </ul>
               ` : ''}
               <details style="margin-top: 10px;">
                 <summary>${typeof t !== 'undefined' ? t('rawOutput') : '[HAM ÇIKTI]'}</summary>
-                <pre class="pre-block" style="margin-top: 10px; color: #212529;">${dnsrecon.raw_output || "Çıktı yok"}</pre>
+                <pre class="pre-block" style="margin-top: 10px; color: #c9d1d9;">${dnsrecon.raw_output || "Çıktı yok"}</pre>
               </details>
               <details style="margin-top: 10px;">
                 <summary>${typeof t !== 'undefined' ? t('normalizedJson') : '[NORMALİZE EDİLMİŞ JSON]'}</summary>
@@ -968,7 +1035,7 @@ form.addEventListener("submit", async (event) => {
                   <button class="download-json-btn" onclick="window.downloadJSON(${JSON.stringify(JSON.stringify(norm, null, 2))}, '${(norm.target || data.target_url || 'dnsrecon').replace(/[^a-z0-9]/gi, '_').toLowerCase()}-dnsrecon-results.json.txt')">${typeof t !== 'undefined' ? t('downloadJson') : 'JSON İndir'}</button>
                   <button class="download-json-btn" onclick="window.downloadPDF(${JSON.stringify(norm)}, '${(norm.target || data.target_url || 'dnsrecon').replace(/[^a-z0-9]/gi, '_').toLowerCase()}-dnsrecon-results.json.pdf')">${typeof t !== 'undefined' ? t('downloadPdf') : 'PDF İndir'}</button>
                 </div>
-                <pre class="pre-block" style="margin-top: 10px; color: #212529;">${JSON.stringify(norm, null, 2)}</pre>
+                <pre class="pre-block" style="margin-top: 10px; color: #c9d1d9;">${JSON.stringify(norm, null, 2)}</pre>
               </details>
             </div>
           `;
@@ -1007,16 +1074,16 @@ form.addEventListener("submit", async (event) => {
               return `
             <div class="result-card ${statusClass(norm.status)}">
               <h3>🔍 ${norm.summary || 'theHarvester Sonuçları'}</h3>
-              <p style="color: #212529;"><strong>Durum:</strong> ${norm.status === 'success' ? '✅ Başarılı' : norm.status === 'failed' ? '❌ Başarısız' : '⚠️ Kısmi'}</p>
-              <p style="color: #212529;"><strong>Hedef:</strong> ${norm.target || (typeof t !== 'undefined' ? t('notAvailable') : 'Yok')}</p>
-              ${metrics.duration_ms ? `<p style="color: #212529;"><strong>Süre:</strong> ${(metrics.duration_ms / 1000).toFixed(2)} saniye</p>` : ''}
-              <p style="color: #212529; margin-top: 10px;"><strong>Toplam Sonuç:</strong> ${metrics.total_results || 0}</p>
+              <p style="color: white;"><strong>Durum:</strong> ${norm.status === 'success' ? '✅ Başarılı' : norm.status === 'failed' ? '❌ Başarısız' : '⚠️ Kısmi'}</p>
+              <p style="color: white;"><strong>Hedef:</strong> ${norm.target || (typeof t !== 'undefined' ? t('notAvailable') : 'Yok')}</p>
+              ${metrics.duration_ms ? `<p style="color: white;"><strong>Süre:</strong> ${(metrics.duration_ms / 1000).toFixed(2)} saniye</p>` : ''}
+              <p style="color: white; margin-top: 10px;"><strong>Toplam Sonuç:</strong> ${metrics.total_results || 0}</p>
               ${successful_sources.length > 0 ? `
-                <p style="color: #212529; margin-top: 10px;"><strong style="color: #28a745;">Başarılı Kaynaklar (${successful_sources.length}):</strong></p>
+                <p style="color: #c9d1d9; margin-top: 10px;"><strong style="color: #28a745;">Başarılı Kaynaklar (${successful_sources.length}):</strong></p>
                 ${Object.keys(sources_results).length > 0 ? `
                   <table style="width: 100%; border-collapse: collapse; margin-top: 5px;">
                     <thead>
-                      <tr style="background: #e9ecef;">
+                      <tr style="background: rgba(0, 255, 65, 0.1);">
                         <th style="padding: 8px; text-align: left; border: 1px solid #dee2e6;">Kaynak</th>
                         <th style="padding: 8px; text-align: center; border: 1px solid #dee2e6;">Email</th>
                         <th style="padding: 8px; text-align: center; border: 1px solid #dee2e6;">Host</th>
@@ -1036,64 +1103,64 @@ form.addEventListener("submit", async (event) => {
                       `).join('')}
                     </tbody>
                   </table>
-                  <p style="color: #212529; margin-top: 10px; font-size: 0.9em;"><em>Not: Sadece sonuç bulunan kaynaklar gösterilmektedir.</em></p>
+                  <p style="color: #c9d1d9; margin-top: 10px; font-size: 0.9em;"><em>Not: Sadece sonuç bulunan kaynaklar gösterilmektedir.</em></p>
                 ` : `
-                  <ul style="color: #212529; margin-left: 20px;">
+                  <ul style="color: #c9d1d9; margin-left: 20px;">
                     ${successful_sources.map(s => `<li style="color: #28a745;">${s}</li>`).join('')}
                   </ul>
                 `}
               ` : ''}
               ${missing_api_keys.length > 0 ? `
-                <p style="color: #212529; margin-top: 10px;"><strong style="color: #6c757d;">API Key Eksik Kaynaklar (${missing_api_keys.length}):</strong></p>
-                <ul style="color: #212529; margin-left: 20px;">
+                <p style="color: #c9d1d9; margin-top: 10px;"><strong style="color: #6c757d;">API Key Eksik Kaynaklar (${missing_api_keys.length}):</strong></p>
+                <ul style="color: #c9d1d9; margin-left: 20px;">
                   ${missing_api_keys.slice(0, 10).map(s => `<li style="color: #6c757d;">${s}</li>`).join('')}
                   ${missing_api_keys.length > 10 ? `<li><em>... ve ${missing_api_keys.length - 10} kaynak daha</em></li>` : ''}
                 </ul>
               ` : ''}
               ${error_sources.length > 0 ? `
-                <p style="color: #212529; margin-top: 10px;"><strong style="color: #ffc107;">Hata Olan Kaynaklar (${error_sources.length}):</strong></p>
-                <ul style="color: #212529; margin-left: 20px;">
+                <p style="color: #c9d1d9; margin-top: 10px;"><strong style="color: #ffc107;">Hata Olan Kaynaklar (${error_sources.length}):</strong></p>
+                <ul style="color: #c9d1d9; margin-left: 20px;">
                   ${error_sources.map(s => `<li style="color: #ffc107;">${s}</li>`).join('')}
                 </ul>
               ` : ''}
               ${emails.length > 0 ? `
-                <p style="color: #212529; margin-top: 10px;"><strong>E-posta Adresleri (${emails.length}):</strong></p>
-                <ul style="color: #212529; margin-left: 20px;">
+                <p style="color: #c9d1d9; margin-top: 10px;"><strong>E-posta Adresleri (${emails.length}):</strong></p>
+                <ul style="color: #c9d1d9; margin-left: 20px;">
                   ${emails.slice(0, 20).map(e => `<li>${e}</li>`).join('')}
                   ${emails.length > 20 ? `<li><em>... ve ${emails.length - 20} e-posta daha</em></li>` : ''}
                 </ul>
               ` : ''}
               ${hosts.length > 0 ? `
-                <p style="color: #212529; margin-top: 10px;"><strong>Host'lar (${hosts.length}):</strong></p>
-                <ul style="color: #212529; margin-left: 20px;">
+                <p style="color: #c9d1d9; margin-top: 10px;"><strong>Host'lar (${hosts.length}):</strong></p>
+                <ul style="color: #c9d1d9; margin-left: 20px;">
                   ${hosts.slice(0, 20).map(h => `<li>${h}</li>`).join('')}
                   ${hosts.length > 20 ? `<li><em>... ve ${hosts.length - 20} host daha</em></li>` : ''}
                 </ul>
               ` : ''}
               ${subdomains.length > 0 ? `
-                <p style="color: #212529; margin-top: 10px;"><strong>Subdomain'ler (${subdomains.length}):</strong></p>
-                <ul style="color: #212529; margin-left: 20px;">
+                <p style="color: #c9d1d9; margin-top: 10px;"><strong>Subdomain'ler (${subdomains.length}):</strong></p>
+                <ul style="color: #c9d1d9; margin-left: 20px;">
                   ${subdomains.slice(0, 20).map(s => `<li>${s}</li>`).join('')}
                   ${subdomains.length > 20 ? `<li><em>... ve ${subdomains.length - 20} subdomain daha</em></li>` : ''}
                 </ul>
               ` : ''}
               ${ips.length > 0 ? `
-                <p style="color: #212529; margin-top: 10px;"><strong>IP Adresleri (${ips.length}):</strong></p>
-                <ul style="color: #212529; margin-left: 20px;">
+                <p style="color: #c9d1d9; margin-top: 10px;"><strong>IP Adresleri (${ips.length}):</strong></p>
+                <ul style="color: #c9d1d9; margin-left: 20px;">
                   ${ips.slice(0, 20).map(ip => `<li>${ip}</li>`).join('')}
                   ${ips.length > 20 ? `<li><em>... ve ${ips.length - 20} IP daha</em></li>` : ''}
                 </ul>
               ` : ''}
               ${urls.length > 0 ? `
-                <p style="color: #212529; margin-top: 10px;"><strong>URL'ler (${urls.length}):</strong></p>
-                <ul style="color: #212529; margin-left: 20px;">
+                <p style="color: #c9d1d9; margin-top: 10px;"><strong>URL'ler (${urls.length}):</strong></p>
+                <ul style="color: #c9d1d9; margin-left: 20px;">
                   ${urls.slice(0, 20).map(u => `<li>${u}</li>`).join('')}
                   ${urls.length > 20 ? `<li><em>... ve ${urls.length - 20} URL daha</em></li>` : ''}
                 </ul>
               ` : ''}
               <details style="margin-top: 10px;">
                 <summary>${typeof t !== 'undefined' ? t('rawOutput') : '[HAM ÇIKTI]'}</summary>
-                <pre class="pre-block" style="margin-top: 10px; color: #212529;">${theharvester.raw_output || "Çıktı yok"}</pre>
+                <pre class="pre-block" style="margin-top: 10px; color: #c9d1d9;">${theharvester.raw_output || "Çıktı yok"}</pre>
               </details>
               <details style="margin-top: 10px;">
                 <summary>${typeof t !== 'undefined' ? t('normalizedJson') : '[NORMALİZE EDİLMİŞ JSON]'}</summary>
@@ -1101,7 +1168,7 @@ form.addEventListener("submit", async (event) => {
                   <button class="download-json-btn" onclick="window.downloadJSON(${JSON.stringify(JSON.stringify(norm, null, 2))}, '${(norm.target || data.target_url || 'theharvester').replace(/[^a-z0-9]/gi, '_').toLowerCase()}-theharvester-results.json.txt')">${typeof t !== 'undefined' ? t('downloadJson') : 'JSON İndir'}</button>
                   <button class="download-json-btn" onclick="window.downloadPDF(${JSON.stringify(norm)}, '${(norm.target || data.target_url || 'theharvester').replace(/[^a-z0-9]/gi, '_').toLowerCase()}-theharvester-results.json.pdf')">${typeof t !== 'undefined' ? t('downloadPdf') : 'PDF İndir'}</button>
                 </div>
-                <pre class="pre-block" style="margin-top: 10px; color: #212529;">${JSON.stringify(norm, null, 2)}</pre>
+                <pre class="pre-block" style="margin-top: 10px; color: #c9d1d9;">${JSON.stringify(norm, null, 2)}</pre>
               </details>
             </div>
           `;
@@ -1131,25 +1198,25 @@ form.addEventListener("submit", async (event) => {
               return `
             <div class="result-card ${statusClass(norm.status)}">
               <h3>🔎 ${norm.summary || 'Subfinder Sonuçları'}</h3>
-              <p style="color: #212529;"><strong>Durum:</strong> ${norm.status === 'success' ? '✅ Başarılı' : norm.status === 'failed' ? '❌ Başarısız' : '⚠️ Kısmi'}</p>
-              <p style="color: #212529;"><strong>Hedef:</strong> ${norm.target || (typeof t !== 'undefined' ? t('notAvailable') : 'Yok')}</p>
-              ${metrics.duration_ms ? `<p style="color: #212529;"><strong>Süre:</strong> ${(metrics.duration_ms / 1000).toFixed(2)} saniye</p>` : ''}
-              <p style="color: #212529; margin-top: 10px;"><strong>Toplam Subdomain:</strong> ${metrics.total_subdomains || 0}</p>
+              <p style="color: white;"><strong>Durum:</strong> ${norm.status === 'success' ? '✅ Başarılı' : norm.status === 'failed' ? '❌ Başarısız' : '⚠️ Kısmi'}</p>
+              <p style="color: white;"><strong>Hedef:</strong> ${norm.target || (typeof t !== 'undefined' ? t('notAvailable') : 'Yok')}</p>
+              ${metrics.duration_ms ? `<p style="color: white;"><strong>Süre:</strong> ${(metrics.duration_ms / 1000).toFixed(2)} saniye</p>` : ''}
+              <p style="color: white; margin-top: 10px;"><strong>Toplam Subdomain:</strong> ${metrics.total_subdomains || 0}</p>
               ${sources.length > 0 ? `
-                <p style="color: #212529; margin-top: 10px;"><strong>Kaynaklar (${sources.length}):</strong></p>
-                <ul style="color: #212529; margin-left: 20px;">
+                <p style="color: #c9d1d9; margin-top: 10px;"><strong>Kaynaklar (${sources.length}):</strong></p>
+                <ul style="color: #c9d1d9; margin-left: 20px;">
                   ${sources.map(s => `<li>${s}</li>`).join('')}
                 </ul>
               ` : ''}
               ${subdomains.length > 0 ? `
-                <p style="color: #212529; margin-top: 10px;"><strong>Subdomain'ler (${subdomains.length}):</strong></p>
-                <ul style="color: #212529; margin-left: 20px; max-height: 300px; overflow-y: auto;">
+                <p style="color: #c9d1d9; margin-top: 10px;"><strong>Subdomain'ler (${subdomains.length}):</strong></p>
+                <ul style="color: #c9d1d9; margin-left: 20px; max-height: 300px; overflow-y: auto;">
                   ${subdomains.map(s => `<li>${s}</li>`).join('')}
                 </ul>
               ` : ''}
               <details style="margin-top: 10px;">
                 <summary>${typeof t !== 'undefined' ? t('rawOutput') : '[HAM ÇIKTI]'}</summary>
-                <pre class="pre-block" style="margin-top: 10px; color: #212529;">${subfinder.raw_output || "Çıktı yok"}</pre>
+                <pre class="pre-block" style="margin-top: 10px; color: #c9d1d9;">${subfinder.raw_output || "Çıktı yok"}</pre>
               </details>
               <details style="margin-top: 10px;">
                 <summary>${typeof t !== 'undefined' ? t('normalizedJson') : '[NORMALİZE EDİLMİŞ JSON]'}</summary>
@@ -1157,7 +1224,7 @@ form.addEventListener("submit", async (event) => {
                   <button class="download-json-btn" onclick="window.downloadJSON(${JSON.stringify(JSON.stringify(norm, null, 2))}, '${(norm.target || data.target_url || 'subfinder').replace(/[^a-z0-9]/gi, '_').toLowerCase()}-subfinder-results.json.txt')">${typeof t !== 'undefined' ? t('downloadJson') : 'JSON İndir'}</button>
                   <button class="download-json-btn" onclick="window.downloadPDF(${JSON.stringify(norm)}, '${(norm.target || data.target_url || 'subfinder').replace(/[^a-z0-9]/gi, '_').toLowerCase()}-subfinder-results.json.pdf')">${typeof t !== 'undefined' ? t('downloadPdf') : 'PDF İndir'}</button>
                 </div>
-                <pre class="pre-block" style="margin-top: 10px; color: #212529;">${JSON.stringify(norm, null, 2)}</pre>
+                <pre class="pre-block" style="margin-top: 10px; color: #c9d1d9;">${JSON.stringify(norm, null, 2)}</pre>
               </details>
             </div>
           `;
@@ -1195,18 +1262,18 @@ form.addEventListener("submit", async (event) => {
         <h3 style="color: white; margin-bottom: 1rem;">🤖 AI Güvenlik Analizi</h3>
         
         <div style="background: white; padding: 20px; border-radius: 8px; margin-bottom: 15px;">
-          <p style="margin: 0 0 10px 0; color: #212529;"><strong>Hedef:</strong> ${analysis.target_url}</p>
-          <p style="margin: 0 0 10px 0; color: #212529;"><strong>Genel Risk Seviyesi:</strong> 
-            <span style="color: ${riskColors[analysis.overall_risk_level] || '#212529'}; font-weight: bold; font-size: 1.2em;">
+          <p style="margin: 0 0 10px 0; color: #c9d1d9;"><strong>Hedef:</strong> ${analysis.target_url}</p>
+          <p style="margin: 0 0 10px 0; color: #c9d1d9;"><strong>Genel Risk Seviyesi:</strong> 
+            <span style="color: ${riskColors[analysis.overall_risk_level] || '#c9d1d9'}; font-weight: bold; font-size: 1.2em;">
               ${riskLabels[analysis.overall_risk_level] || analysis.overall_risk_level.toUpperCase()}
             </span>
           </p>
-          <p style="margin: 0; color: #212529;"><strong>Toplam Bulgu:</strong> ${analysis.total_findings}</p>
+          <p style="margin: 0; color: #c9d1d9;"><strong>Toplam Bulgu:</strong> ${analysis.total_findings}</p>
         </div>
         
         ${analysis.risk_summary ? `
         <div style="background: white; padding: 20px; border-radius: 8px; margin-bottom: 15px;">
-          <h4 style="margin: 0 0 15px 0; color: #212529;">📊 Risk Seviyesi Özeti</h4>
+          <h4 style="margin: 0 0 15px 0; color: #c9d1d9;">📊 Risk Seviyesi Özeti</h4>
           <table style="width: 100%; border-collapse: collapse;">
             <thead>
               <tr style="background: #e9ecef;">
@@ -1252,31 +1319,31 @@ form.addEventListener("submit", async (event) => {
         
         ${analysis.analysis_summary ? `
         <div style="background: white; padding: 20px; border-radius: 8px; margin-bottom: 15px;">
-          <h4 style="margin: 0 0 15px 0; color: #212529;">📝 Analiz Özeti</h4>
-          <p style="margin: 0; color: #212529; line-height: 1.6;">${analysis.analysis_summary}</p>
+          <h4 style="margin: 0 0 15px 0; color: #c9d1d9;">📝 Analiz Özeti</h4>
+          <p style="margin: 0; color: #c9d1d9; line-height: 1.6;">${analysis.analysis_summary}</p>
         </div>
         ` : ''}
         
         ${analysis.tool_analyses && analysis.tool_analyses.length > 0 ? `
         <div style="background: white; padding: 20px; border-radius: 8px; margin-bottom: 15px;">
-          <h4 style="margin: 0 0 15px 0; color: #212529;">🔧 Tool Bazlı Analizler</h4>
+          <h4 style="margin: 0 0 15px 0; color: #c9d1d9;">🔧 Tool Bazlı Analizler</h4>
           ${analysis.tool_analyses.map(ta => `
             <div style="margin-bottom: 15px; padding: 15px; background: #f8f9fa; border-left: 4px solid ${riskColors[ta.risk_level] || '#6c757d'}; border-radius: 4px;">
-              <h5 style="margin: 0 0 10px 0; color: #212529;">
+              <h5 style="margin: 0 0 10px 0; color: #c9d1d9;">
                 ${ta.tool_name.toUpperCase()} - 
-                <span style="color: ${riskColors[ta.risk_level] || '#212529'};">${riskLabels[ta.risk_level] || ta.risk_level}</span>
+                <span style="color: ${riskColors[ta.risk_level] || '#c9d1d9'};">${riskLabels[ta.risk_level] || ta.risk_level}</span>
                 (${ta.findings_count} bulgu)
               </h5>
-              <p style="margin: 0 0 10px 0; color: #212529; font-size: 0.9em;">${ta.summary}</p>
+              <p style="margin: 0 0 10px 0; color: #c9d1d9; font-size: 0.9em;">${ta.summary}</p>
               ${ta.key_issues && ta.key_issues.length > 0 ? `
-                <p style="margin: 5px 0; color: #212529; font-weight: bold;">Önemli Sorunlar:</p>
-                <ul style="margin: 5px 0 10px 20px; color: #212529;">
+                <p style="margin: 5px 0; color: #c9d1d9; font-weight: bold;">Önemli Sorunlar:</p>
+                <ul style="margin: 5px 0 10px 20px; color: #c9d1d9;">
                   ${ta.key_issues.map(issue => `<li>${issue}</li>`).join('')}
                 </ul>
               ` : ''}
               ${ta.recommendations && ta.recommendations.length > 0 ? `
-                <p style="margin: 5px 0; color: #212529; font-weight: bold;">Öneriler:</p>
-                <ul style="margin: 5px 0 0 20px; color: #212529;">
+                <p style="margin: 5px 0; color: #c9d1d9; font-weight: bold;">Öneriler:</p>
+                <ul style="margin: 5px 0 0 20px; color: #c9d1d9;">
                   ${ta.recommendations.map(rec => `<li>${rec}</li>`).join('')}
                 </ul>
               ` : ''}
@@ -1287,18 +1354,18 @@ form.addEventListener("submit", async (event) => {
         
         ${analysis.recommendations && analysis.recommendations.length > 0 ? `
         <div style="background: white; padding: 20px; border-radius: 8px;">
-          <h4 style="margin: 0 0 15px 0; color: #212529;">💡 Güvenlik Önerileri</h4>
+          <h4 style="margin: 0 0 15px 0; color: #c9d1d9;">💡 Güvenlik Önerileri</h4>
           ${analysis.recommendations.map((rec, idx) => `
             <div style="margin-top: ${idx > 0 ? '20px' : '10px'}; padding: 15px; background: ${priorityColors[rec.priority] ? `${priorityColors[rec.priority]}20` : '#f8f9fa'}; border-left: 4px solid ${priorityColors[rec.priority] || '#6c757d'}; border-radius: 4px;">
-              <h5 style="margin: 0 0 10px 0; color: ${priorityColors[rec.priority] || '#212529'};">
+              <h5 style="margin: 0 0 10px 0; color: ${priorityColors[rec.priority] || '#c9d1d9'};">
                 ${idx + 1}. ${rec.title}
               </h5>
-              <p style="margin: 0 0 10px 0; color: #212529;">${rec.description}</p>
+              <p style="margin: 0 0 10px 0; color: #c9d1d9;">${rec.description}</p>
               <p style="margin: 0 0 10px 0; color: #6c757d; font-size: 0.9em;">
                 <strong>Etkilenen Araçlar:</strong> ${rec.affected_tools.join(', ')}
               </p>
-              <p style="margin: 0; color: #212529;"><strong>Yapılacaklar:</strong></p>
-              <ul style="margin: 5px 0 0 20px; color: #212529;">
+              <p style="margin: 0; color: #c9d1d9;"><strong>Yapılacaklar:</strong></p>
+              <ul style="margin: 5px 0 0 20px; color: #c9d1d9;">
                 ${rec.action_items.map(item => `<li>${item}</li>`).join('')}
               </ul>
             </div>
@@ -1310,11 +1377,24 @@ form.addEventListener("submit", async (event) => {
       })() : ''}
     `;
   } catch (error) {
+    // #region agent log
+    debugLog('main.js:1376', 'Ana catch bloğu - hata yakalandı', {
+      name: error.name,
+      message: error.message,
+      stack: error.stack?.substring(0, 300),
+      type: typeof error,
+      constructor: error.constructor?.name
+    }, 'F');
+    // #endregion
+    
     console.error(error);
     setLoading(false);
     
     // AbortError kontrolü - kullanıcı iptal ettiyse özel mesaj göster
     if (error.name === 'AbortError') {
+      // #region agent log
+      debugLog('main.js:1385', 'AbortError tespit edildi', {name: error.name, message: error.message}, 'F');
+      // #endregion
       resultEl.innerHTML = `
         <div class="result-card warning">
           <h3>⚠️ Tarama İptal Edildi</h3>
@@ -1331,8 +1411,14 @@ form.addEventListener("submit", async (event) => {
     // Daha detaylı hata mesajı
     let detailedError = error.message || 'Bilinmeyen hata';
     if (error.message && error.message.includes('Failed to fetch')) {
+      // #region agent log
+      debugLog('main.js:1400', 'Failed to fetch hatası tespit edildi', {message: error.message, API_BASE}, 'A');
+      // #endregion
       detailedError = 'Backend\'e bağlanılamadı. Lütfen backend\'in çalıştığından emin olun (http://localhost:8000). Backend\'i başlatmak için: cd backend && uvicorn src.main:app --reload --host 0.0.0.0 --port 8000';
     } else if (error.message && error.message.includes('NetworkError')) {
+      // #region agent log
+      debugLog('main.js:1404', 'NetworkError tespit edildi', {message: error.message}, 'A');
+      // #endregion
       detailedError = 'Ağ hatası. Backend çalışıyor mu kontrol edin.';
     }
     
@@ -1351,10 +1437,56 @@ form.addEventListener("submit", async (event) => {
 });
 
 // Dil değişikliği event listener'ı
+// Tooltip güncelleme fonksiyonu
+function updateTooltips() {
+  const t = typeof translations !== 'undefined' && typeof currentLang !== 'undefined' 
+    ? translations[currentLang] 
+    : null;
+  
+  if (!t) return;
+  
+  const toolCheckboxes = document.querySelectorAll('.tool-checkbox[data-tool]');
+  toolCheckboxes.forEach(checkbox => {
+    const toolName = checkbox.getAttribute('data-tool');
+    // Tool name'i tooltip key'e çevir (ping -> tooltipPing, testssl -> tooltipTestssl, etc.)
+    let tooltipKey;
+    if (toolName === 'testssl') {
+      tooltipKey = 'tooltipTestssl';
+    } else if (toolName === 'theharvester') {
+      tooltipKey = 'tooltipTheharvester';
+    } else {
+      tooltipKey = `tooltip${toolName.charAt(0).toUpperCase() + toolName.slice(1)}`;
+    }
+    
+    const tooltipText = t[tooltipKey] || '';
+    const tooltipElement = checkbox.querySelector('.tool-tooltip');
+    
+    if (tooltipElement && tooltipText) {
+      tooltipElement.textContent = tooltipText;
+    }
+  });
+}
+
 document.addEventListener('languageChanged', (e) => {
   // Dil değiştiğinde UI güncellenir
   // Bu event lang.js tarafından gönderilir
+  updateTooltips();
 });
+
+// Sayfa yüklendiğinde tooltip'leri güncelle
+document.addEventListener('DOMContentLoaded', () => {
+  // lang.js yüklendikten sonra tooltip'leri güncelle
+  setTimeout(() => {
+    updateTooltips();
+  }, 100);
+});
+
+// Eğer sayfa zaten yüklendiyse
+if (document.readyState === 'complete' || document.readyState === 'interactive') {
+  setTimeout(() => {
+    updateTooltips();
+  }, 100);
+}
 
 // Analiz artık otomatik yapılıyor, buton ve handleAnalysis fonksiyonu kaldırıldı
 
